@@ -1,0 +1,8 @@
+useDynLib(SEIR)
+exportPattern("^[[:alpha:]]+")
+import( Rcpp )
+# grab the namespace
+#NAMESPACE <- environment()
+#.onLoad <- function(libname, pkgname) {
+#    loadRcppModules()
+#}
