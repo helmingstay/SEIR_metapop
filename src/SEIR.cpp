@@ -335,18 +335,19 @@ class Metapop {
         void step( ) {
             // do processing of migration here,
             // then take a step for each city
-            unsigned int ii, jj;
+            unsigned int ithis, iother;
             // first, get and save effective I for each pop
-            for ( ii = 0; ii < npop; ii++) {
+            for ( ithis = 0; ithis < npop; ithis++) {
                 //reset
-                pops[ii].Ieff = 0;
-               for ( jj = 0; jj < npop; jj++) {
-                   pops[ii].Ieff += couplemat(ii, jj) * pops[jj].I;
+                pops[ithis].Ieff = 0;
+               for ( iother = 0; iother < npop; iother++) {
+                    // couplemat isn't symmetric -- step through this city's row
+                   pops[ithis].Ieff += couplemat(ithis, iother) * pops[iother].I;
                 }
             }
             // then take the next step for all pops
-            for ( ii = 0; ii < npop; ii++) {
-               pops[ii].steps( 1 );
+            for ( ithis = 0; ithis < npop; ithis++) {
+               pops[ithis].steps( 1 );
             } 
         }
 };
