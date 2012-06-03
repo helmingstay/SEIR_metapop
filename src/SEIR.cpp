@@ -122,7 +122,9 @@ class SEIR {
             S +=  (nbirth - nlatent);
             E +=  (nlatent - ninfect);
             Eobs += nlatent;
+            // instantaneous number infected
             I +=  (ninfect - nrecover);
+            // prevalence -- all infected in this reporting period (nstep)
             Iobs +=  ninfect;
             // Effective I is computed at the metapop level for this timestep
             R += (nrecover + ndeltaR);
@@ -141,6 +143,7 @@ class SEIR {
                 ret(7) = N;
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
+                // set observeds to zero
                 Eobs = 0;
                 Iobs = 0;
                 repday++;
