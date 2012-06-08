@@ -27,7 +27,7 @@ class SEIR {
         unsigned int day;                    // current day of the model
         unsigned int repday;                    // current reporting day
         double Pi;  //pi
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, beta_now, deltat;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, beta_now, deltat;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
         int nstep;
         int schooltype;
@@ -54,6 +54,7 @@ class SEIR {
             rpobs = as<double>(pars["pobs"]);
             rbetaforce = as<double>(pars["betaforce"]);
             rbeta0 = as<double>(pars["beta0"]);
+            rtheta = as<double>(pars["theta"]);
             rschooldays = pars["schooldays"];
             /*
             if (schooltype==1) {
@@ -104,7 +105,8 @@ class SEIR {
                 beta_now = rbeta0*pow(1.0+rbetaforce, rschooldays( doy ));
             };
             int nbirth = Rf_rpois( N*rbirth );
-            int nlatent = Rf_rpois( (beta_now*S*Ieff)/(N));
+            // theta = 0, density dependent, theta=1, freq depend.
+            int nlatent = Rf_rpois( (beta_now*S*Ieff*pow(N, rtheta))/(N));
             //int nlatent = Rf_rpois( (beta_now*S*Ieff)/(N+Ieff-I));
             int ninfect = Rf_rpois( rsigma*E );
             int nrecover = Rf_rpois( rgamma*I );
