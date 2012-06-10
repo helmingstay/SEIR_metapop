@@ -106,9 +106,7 @@ class SEIR {
             };
             int nbirth = Rf_rpois( N*rbirth );
             // theta = 0, density dependent, theta=1, freq depend.
-            //int nlatent = Rf_rpois( (beta_now*S*Ieff*pow(N, rtheta))/(N));
-            // fixme testing !!
-            int nlatent = Rf_rpois( (beta_now*S*Ieff*pow(N, 0))/pow(N,rtheta));
+            int nlatent = Rf_rpois( (beta_now*S*Ieff*pow(N, rtheta))/(N));
             //int nlatent = Rf_rpois( (beta_now*S*Ieff)/(N+Ieff-I));
             int ninfect = Rf_rpois( rsigma*E );
             int nrecover = Rf_rpois( rgamma*I );
