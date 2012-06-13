@@ -27,7 +27,7 @@ class SEIR {
         unsigned int day;                    // current day of the model
         unsigned int repday;                    // current reporting day
         double Pi;  //pi
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, beta_now, deltat;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rSavail, beta_now, deltat;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
         int nstep;
         int schooltype;
@@ -36,7 +36,7 @@ class SEIR {
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
-        double S, E, Eobs, I, Ieff, Iobs, R, N;  
+        double S, E, Eobs, I, Ieff, Iobs, R, N, Seff;  
 
         void setpars(SEXP pars_) {
             // this is essentially part of the model definition
@@ -55,6 +55,7 @@ class SEIR {
             rbetaforce = as<double>(pars["betaforce"]);
             rbeta0 = as<double>(pars["beta0"]);
             rtheta = as<double>(pars["theta"]);
+            rSavail = as<double>(pars["Savail"]);
             rschooldays = pars["schooldays"];
             /*
             if (schooltype==1) {
@@ -82,6 +83,7 @@ class SEIR {
             Iobs = tmp(5);
             R = tmp(6);
             N = tmp(7);
+            Seff = tmp(8);
         }
 
     private:
@@ -105,9 +107,22 @@ class SEIR {
                 beta_now = rbeta0*pow(1.0+rbetaforce, rschooldays( doy ));
             };
             int nbirth = Rf_rpois( N*rbirth );
-            // theta = 1, density dependent, theta=0, freq depend.
-            int nlatent = Rf_rpois( (beta_now*S*Ieff)/floor(pow(N,rtheta)));
-            //int nlatent = Rf_rpois( (beta_now*S*Ieff)/(N+Ieff-I));
+            // Binomial sample of S available for infection in this time period
+            // rSavail = 1 returns model to default state
+            Seff = Rf_rbinom(S, rSavail);
+            // old
+            // theta = 0, density dependent, theta=1, freq depend.
+            // int nlatent = Rf_rpois( (beta_now*Seff*Ieff)/floor(pow(N,rtheta)));
+            //
+            // new -- rtheta = 0, orig model
+            // rtheta > 0, small cities have higher beta
+            // rtheta < 0, small cities have lower beta
+            // rtheta << max city size
+            double beta_adjust = ( rtheta+(N*1.0) )/(N*1.0);
+            double beta_eff = beta_now * beta_adjust;
+            //Rf_PrintValue(wrap(beta_adjust));
+            //beta_eff = beta_now;
+            int nlatent = Rf_rpois( (beta_eff*Seff*Ieff)/N);
             int ninfect = Rf_rpois( rsigma*E );
             int nrecover = Rf_rpois( rgamma*I );
             // if deltaR is negative, need a double negative
@@ -143,6 +158,7 @@ class SEIR {
                 ret(5) = Rf_rbinom(Iobs, rpobs);
                 ret(6) = R;
                 ret(7) = N;
+                ret(8) = Seff;
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
                 // set observeds to zero
