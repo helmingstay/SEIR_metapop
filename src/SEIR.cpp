@@ -7,9 +7,11 @@ class SEIR {
         SEIR( SEXP blocksize_, SEXP nstates_, SEXP nstep_, SEXP schooltype_):
           //spos(spos_), 
           blocksize(as<int>(blocksize_)), //maxday(as<int>(blocksize_)), 
-          nstates(as<int>(nstates_)), day(0), repday(0), 
+          nstates(as<unsigned int>(nstates_)), day(0), repday(0), 
           nstep(as<int>(nstep_)), 
-          schooltype(as<int>(schooltype_)), Pi(4*atan(1)) {
+          Pi(4*atan(1)), 
+          minparlen(14),
+          schooltype(as<int>(schooltype_)) {
             state = arma::mat(nstates, blocksize );
             // initialize to 0 to avoid surprises...
             state.zeros();
@@ -26,24 +28,28 @@ class SEIR {
         unsigned int nstates;     // number of states == number of rows in state matrix
         unsigned int day;                    // current day of the model
         unsigned int repday;                    // current reporting day
-        double Pi;  //pi
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rSavail, beta_now, deltat;
-        NumericVector rschooldays;  //-1 for vacation, 1 for school
         int nstep;
+        double Pi;  //pi
+        // this should get changed when we add states
+        unsigned int minparlen;
         int schooltype;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSavail, beta_now, deltat;
+        NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
-        double S, E, Eobs, I, Ieff, Iobs, R, N, Seff;  
+        double S, E, Eobs, I, Ieff, Iobs, R, N, Seff;
 
         void setpars(SEXP pars_) {
             // this is essentially part of the model definition
             List tmp(clone(pars_));
+            // change this if adding pars!!
             checkpars(tmp);
             pars = tmp;
             // params for basic SEIRN functionality
+            // update minparlen if adding params
             nstep = as<double>(pars["nstep"]);
             deltat = as<double>(pars["deltat"]);
             rbirth = as<double>(pars["birth"]);
@@ -55,6 +61,7 @@ class SEIR {
             rbetaforce = as<double>(pars["betaforce"]);
             rbeta0 = as<double>(pars["beta0"]);
             rtheta = as<double>(pars["theta"]);
+            rimports = as<double>(pars["imports"]);
             rSavail = as<double>(pars["Savail"]);
             rschooldays = pars["schooldays"];
             /*
@@ -118,11 +125,11 @@ class SEIR {
             // rtheta > 0, small cities have higher beta
             // rtheta < 0, small cities have lower beta
             // rtheta << max city size
-            double beta_adjust = ( rtheta+(N*1.0) )/(N*1.0);
-            double beta_eff = beta_now * beta_adjust;
+            //double beta_adjust = ( rtheta+(N*1.0) )/(N*1.0);
+            double beta_eff = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
             //Rf_PrintValue(wrap(beta_adjust));
             //beta_eff = beta_now;
-            int nlatent = Rf_rpois( (beta_eff*Seff*Ieff)/N);
+            int nlatent = Rf_rpois( (beta_eff*Seff*(Ieff+rimports))/N);
             int ninfect = Rf_rpois( rsigma*E );
             int nrecover = Rf_rpois( rgamma*I );
             // if deltaR is negative, need a double negative
@@ -226,8 +233,8 @@ class SEIR {
         SEXP checkpars(List pars_) {
             // TODO -- add checking for names...
             BEGIN_RCPP
-            if ( pars_.size() < 3 ) {
-                throw std::range_error("pars list too small");
+            if ( pars_.size() < minparlen ) {
+                throw std::range_error("pars list has incorrect length");
             };
             NumericVector dummy(1);
             return dummy;
@@ -276,7 +283,7 @@ RCPP_MODULE(seirmod){
 class Metapop {
     public:
         Metapop(SEXP npop_, SEXP xymat_, SEXP cmat_, SEXP blocksize, SEXP nstates_, SEXP nstep, SEXP schooltype) : 
-          nstates(as<int>(nstates_)), npop(as<int>(npop_)), xymat(xymat_), couplemat(cmat_), thiscity(0)
+          nstates(as<unsigned int>(nstates_)), npop(as<unsigned int>(npop_)), xymat(xymat_), couplemat(cmat_), thiscity(0)
         {
             SEIR tmpseir(blocksize, nstates_, nstep, schooltype);
             pops = std::vector<SEIR>(npop, tmpseir);
@@ -295,13 +302,13 @@ class Metapop {
 
         List report() {
             Rcpp::List ret;
-            for (int ii=0; ii<npop; ii++) {
+            for (unsigned int ii=0; ii<npop; ii++) {
                 ret.push_back( pops[ii].report());
             };
             return ret; 
         }
         
-        SEXP setcity( int n_) {
+        SEXP setcity( unsigned int n_) {
             // just returns exception
             // check that n_ within bounds
             BEGIN_RCPP
@@ -331,7 +338,7 @@ class Metapop {
             if ( tmppars.size() != npop)  {
                 throw std::range_error(" the paramater list of lists should have npop elements");
             };
-            for ( int ii = 0; ii < npop; ii++) {
+            for ( unsigned int ii = 0; ii < npop; ii++) {
                pops[ii].setpars( tmppars(ii)) ;
             } 
             END_RCPP
