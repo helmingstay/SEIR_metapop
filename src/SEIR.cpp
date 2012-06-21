@@ -33,14 +33,14 @@ class SEIR {
         // this should get changed when we add states
         unsigned int minparlen;
         int schooltype;
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSavail, beta_now, deltat;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSresid, rSfrac, beta_now, deltat;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
-        double S, E, Eobs, I, Ieff, Iobs, R, N, Seff;
+        double S, E, Eobs, I, Ieff, Iobs, R, N, Shidden;
 
         void setpars(SEXP pars_) {
             // this is essentially part of the model definition
@@ -62,7 +62,8 @@ class SEIR {
             rbeta0 = as<double>(pars["beta0"]);
             rtheta = as<double>(pars["theta"]);
             rimports = as<double>(pars["imports"]);
-            rSavail = as<double>(pars["Savail"]);
+            rSresid = as<double>(pars["Sresid"]);
+            rSfrac = as<double>(pars["Sfrac"]);
             rschooldays = pars["schooldays"];
             /*
             if (schooltype==1) {
@@ -74,7 +75,6 @@ class SEIR {
                 beta0 = (rR0*rgamma) / pow(1.0+rbetaforce, (2.0*rschooldays - 365.0)/365.0);
             }
             */
-                
         }
         
         void setstate(SEXP init_) {
@@ -90,14 +90,22 @@ class SEIR {
             Iobs = tmp(5);
             R = tmp(6);
             N = tmp(7);
-            Seff = tmp(8);
+            Shidden = tmp(8);
         }
 
     private:
+        #include <algorithm>
+        // rpois that returns an int no larger than second arg
+        int myrpois( double rate, int mymax) {
+            int result = Rf_rpois( rate );
+            return std::min(result, mymax);
+        }
+    
         // model-dependent variables and methods
         void step(void) {
             // core model definition
             // modify state variables in-place, accumulate for reporting
+            double beta_eff;
             int ndeltaR;
             // births adjusted for infant mortality
             // deaths and migrations included in deltaR
@@ -113,25 +121,37 @@ class SEIR {
                 int doy = day % 365;
                 beta_now = rbeta0*pow(1.0+rbetaforce, rschooldays( doy ));
             };
-            int nbirth = Rf_rpois( N*rbirth );
-            // Binomial sample of S available for infection in this time period
-            // rSavail = 1 returns model to default state
-            Seff = Rf_rbinom(S, rSavail);
+            // dSh = + a*S - b*Sh;  resid = 1/b, a/b=frac;  a = frac/resid, b = 1/resid
+            // do this before anything else
+            int S_tohidden = myrpois( (S*rSfrac)/rSresid, S );
+            int S_fromhidden = myrpois( Shidden/rSresid, Shidden );
+            S += (S_fromhidden - S_tohidden);
+            Shidden += (S_tohidden - S_fromhidden);
+            //
             // old
             // theta = 0, density dependent, theta=1, freq depend.
-            // int nlatent = Rf_rpois( (beta_now*Seff*Ieff)/floor(pow(N,rtheta)));
+            // int nlatent = Rf_rpois( (beta_now*S*Ieff)/floor(pow(N,rtheta)));
             //
             // new -- rtheta = 0, orig model
             // rtheta > 0, small cities have higher beta
             // rtheta < 0, small cities have lower beta
             // rtheta << max city size
-            //double beta_adjust = ( rtheta+(N*1.0) )/(N*1.0);
-            double beta_eff = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
-            //Rf_PrintValue(wrap(beta_adjust));
+            // 
+            if (rtheta == 0 ) {
+                beta_eff = beta_now; 
+            } else {
+                beta_eff = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
+            };
             //beta_eff = beta_now;
-            int nlatent = Rf_rpois( (beta_eff*Seff*(Ieff+rimports))/N);
-            int ninfect = Rf_rpois( rsigma*E );
-            int nrecover = Rf_rpois( rgamma*I );
+            int nbirth = Rf_rpois( N*rbirth );
+            // Effective I is computed at the metapop level for this timestep
+            //
+            // multiple ways to do latent/imports...??
+            double latent_rate = (beta_eff*S*(Ieff+rimports))/N; 
+            //int latent_rate = (beta_eff*S*(Ieff+rimports))/N 
+            int nlatent = myrpois( latent_rate, S + nbirth);
+            int ninfect = myrpois( rsigma*E, E + nlatent );
+            int nrecover = myrpois( rgamma*I, I + ninfect );
             // if deltaR is negative, need a double negative
             if ( rdeltaR < 0 ) { 
                 rdeltaR *= -1;
@@ -145,12 +165,11 @@ class SEIR {
             while ( I + ninfect < nrecover ) nrecover--;
             S +=  (nbirth - nlatent);
             E +=  (nlatent - ninfect);
-            Eobs += nlatent;
             // instantaneous number infected
             I +=  (ninfect - nrecover);
+            Eobs += nlatent;
             // prevalence -- all infected in this reporting period (nstep)
             Iobs +=  ninfect;
-            // Effective I is computed at the metapop level for this timestep
             R += (nrecover + ndeltaR);
             N += (nbirth + ndeltaR);
             //Rf_PrintValue(wrap(day));
@@ -165,7 +184,7 @@ class SEIR {
                 ret(5) = Rf_rbinom(Iobs, rpobs);
                 ret(6) = R;
                 ret(7) = N;
-                ret(8) = Seff;
+                ret(8) = Shidden;
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
                 // set observeds to zero
