@@ -4,14 +4,13 @@ using namespace Rcpp;
 
 class SEIR {
     public:
-        SEIR( SEXP blocksize_, SEXP nstates_, SEXP nstep_, SEXP schooltype_):
+        SEIR( SEXP blocksize_, SEXP nstates_, SEXP nstep_):
           //spos(spos_), 
           blocksize(as<int>(blocksize_)), //maxday(as<int>(blocksize_)), 
           nstates(as<unsigned int>(nstates_)), day(0), repday(0), 
           nstep(as<int>(nstep_)), 
           Pi(4*atan(1)), 
-          minparlen(14),
-          schooltype(as<int>(schooltype_)) {
+          minparlen(14) {
             state = arma::mat(nstates, blocksize );
             // initialize to 0 to avoid surprises...
             state.zeros();
@@ -32,8 +31,8 @@ class SEIR {
         double Pi;  //pi
         // this should get changed when we add states
         unsigned int minparlen;
-        int schooltype;
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSresid, rSfrac, beta_now, deltat;
+        int schooltype, rschoollag, rimportmethod;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSresid, rSfrac, beta_now, deltat, rbetasd_ratio;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
@@ -50,21 +49,42 @@ class SEIR {
             pars = tmp;
             // params for basic SEIRN functionality
             // update minparlen if adding params
-            nstep = as<double>(pars["nstep"]);
+            // ??
             deltat = as<double>(pars["deltat"]);
+            // percap per day birth rate 
             rbirth = as<double>(pars["birth"]);
             rsigma = as<double>(pars["sigma"]);
             rgamma = as<double>(pars["gamma"]);
+            // percap per day change in R
             rdeltaR = as<double>(pars["deltaR"]);
+            // R0 used to calculate mean beta if schooltype == 0 (sin) !!fixme??
             rR0 = as<double>(pars["R0"]);
+            // binomial probability of observing accumulated I (over nsteps)
             rpobs = as<double>(pars["pobs"]);
-            rbetaforce = as<double>(pars["betaforce"]);
+            // mean beta, modulated by schooltime
+            // only used if schooltype == 1 (termtime) !!fixme??
             rbeta0 = as<double>(pars["beta0"]);
+            // modulate beta0 by this much
+            rbetaforce = as<double>(pars["betaforce"]);
+            // add daily normal forcing to beta with SD as a ratio of current value of beta
+            rbetasd_ratio = as<double>(pars["betasd_ratio"]);
+            // modulates Reff
             rtheta = as<double>(pars["theta"]);
-            rimports = as<double>(pars["imports"]);
-            rSresid = as<double>(pars["Sresid"]);
+            // equilib proportion of susceptibles in hidden S class
+            // set to 0 to disable hidden S
             rSfrac = as<double>(pars["Sfrac"]);
+            // equilib residency time of susceptibles in hidden S class
+            rSresid = as<double>(pars["Sresid"]);
+            // 0 is sin, 1 is termtime
+            schooltype = as<int>(pars["schooltype"]);
+            // vector, only used if schooltype == 1
             rschooldays = pars["schooldays"];
+            // lag of school term or sin
+            rschoollag = as<int>(pars["schoollag"]);
+            // rate of imports, meaning depends on importmethdo
+            rimports = as<double>(pars["imports"]);
+            // 1-4 different equations to incorporate imports into  (beta S I) / N
+            rimportmethod = as<int>(pars["importmethod"]);
             /*
             if (schooltype==1) {
             // See keeling et al 2001, "seasonally forced disease dynamics",
@@ -105,28 +125,31 @@ class SEIR {
         void step(void) {
             // core model definition
             // modify state variables in-place, accumulate for reporting
-            double beta_eff;
+            double latent_rate;
             int ndeltaR;
             // births adjusted for infant mortality
             // deaths and migrations included in deltaR
             // no deaths from SEI
+            ////////////////////////////
+            // many in-place, sequential, possible modifications of beta
+            /////////////////////////
             if (schooltype == 0) {
                 //sin forcing
                 beta_now = 
                   rR0*rgamma*
                   (1.0-rbetaforce*
-                    cos(2.0*Pi*(day)/365.0));
+                    cos(2.0*Pi*(day-rschoollag)/365.0));
             };
             if (schooltype == 1) {
-                int doy = day % 365;
+                //termtime forcing, schoold scedule passed in as vector of 0/1??
+                // add 365 to ensure doy is always positive
+                int doy = (day-rschoollag+365) % 365;
                 beta_now = rbeta0*pow(1.0+rbetaforce, rschooldays( doy ));
             };
-            // dSh = + a*S - b*Sh;  resid = 1/b, a/b=frac;  a = frac/resid, b = 1/resid
-            // do this before anything else
-            int S_tohidden = myrpois( (S*rSfrac)/rSresid, S );
-            int S_fromhidden = myrpois( Shidden/rSresid, Shidden );
-            S += (S_fromhidden - S_tohidden);
-            Shidden += (S_tohidden - S_fromhidden);
+            if (rbetasd_ratio != 0 ) {
+                // normal noise perterbation of beta, with sd given as proportion of beta
+                beta_now = Rf_rnorm(beta_now, beta_now*rbetasd_ratio);
+            }
             //
             // old
             // theta = 0, density dependent, theta=1, freq depend.
@@ -137,17 +160,47 @@ class SEIR {
             // rtheta < 0, small cities have lower beta
             // rtheta << max city size
             // 
-            if (rtheta == 0 ) {
-                beta_eff = beta_now; 
-            } else {
-                beta_eff = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
+            if (rtheta != 0 ) {
+                beta_now = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
             };
-            //beta_eff = beta_now;
+            ////////////////////////////
+            // end modifications of beta
+            /////////////////////////
+            if ( rSfrac != 0 ) {
+                // A "hidden" S class, doesn't seem to do much,
+                // can only respond if residence time is very small
+                // dSh = + a*S - b*Sh;  resid = 1/b, a/b=frac;  a = frac/resid, b = 1/resid
+                // do this before anything else
+                int S_tohidden = myrpois( (S*rSfrac)/rSresid, S );
+                int S_fromhidden = myrpois( Shidden/rSresid, Shidden );
+                S += (S_fromhidden - S_tohidden);
+                Shidden += (S_tohidden - S_fromhidden);
+            }; 
             int nbirth = Rf_rpois( N*rbirth );
             // Effective I is computed at the metapop level for this timestep
             //
             // multiple ways to do latent/imports...??
-            double latent_rate = (beta_eff*S*(Ieff+rimports))/N; 
+            if (rimports == 0 ) {
+                latent_rate = (beta_now*S*(Ieff))/N; 
+            } else {
+                switch ( rimportmethod ) {
+                    case 1:
+                        latent_rate = (beta_now*(S*Ieff + rimports))/N; 
+                        break;
+                    case 2:
+                        latent_rate = ((beta_now*Ieff) + (rimports*pow(N, 1.5)))/N; 
+                        break;
+                    case 3:
+                        latent_rate = (beta_now*Ieff)/N + rimports;
+                        break;
+                    case 4:
+                        latent_rate = (beta_now*Ieff + rimports*N)/N;
+                        break;
+                    default:
+                        throw std::range_error("importmethod must be 1-4");
+                }
+            };
+                        
             //int latent_rate = (beta_eff*S*(Ieff+rimports))/N 
             int nlatent = myrpois( latent_rate, S + nbirth);
             int ninfect = myrpois( rsigma*E, E + nlatent );
@@ -159,10 +212,6 @@ class SEIR {
                 ndeltaR *= -1;
             }
             else { ndeltaR = Rf_rpois( N *  rdeltaR) ; };
-            // checks to prevent state < 0
-            while ( S + nbirth < nlatent ) nlatent--;
-            while ( E + nlatent < ninfect ) ninfect--;
-            while ( I + ninfect < nrecover ) nrecover--;
             S +=  (nbirth - nlatent);
             E +=  (nlatent - ninfect);
             // instantaneous number infected
@@ -219,12 +268,21 @@ class SEIR {
     
         NumericMatrix get(void) {
             // get the full state matrix
+            // shouldn't be (1,day)??
             arma::mat tmp(arma::trans(state.cols(1,day)));
             return wrap(tmp);
         }
+
+
+        NumericMatrix getstate(int whichstate) {
+            // get the full history of the given state 
+            arma::colvec tmp(arma::trans(state.row(whichstate)));
+            return wrap(tmp);
+        }
+        
         
         NumericVector getday(unsigned int i) {
-            // get the full state matrix
+            // get the full state matrix for this day
             arma::rowvec tmp(state.col(i));
             return wrap( tmp );
         }
@@ -301,10 +359,10 @@ RCPP_MODULE(seirmod){
 
 class Metapop {
     public:
-        Metapop(SEXP npop_, SEXP xymat_, SEXP cmat_, SEXP blocksize, SEXP nstates_, SEXP nstep, SEXP schooltype) : 
+        Metapop(SEXP npop_, SEXP xymat_, SEXP cmat_, SEXP blocksize, SEXP nstates_, SEXP nstep) : 
           nstates(as<unsigned int>(nstates_)), npop(as<unsigned int>(npop_)), xymat(xymat_), couplemat(cmat_), thiscity(0)
         {
-            SEIR tmpseir(blocksize, nstates_, nstep, schooltype);
+            SEIR tmpseir(blocksize, nstates_, nstep);
             pops = std::vector<SEIR>(npop, tmpseir);
             //pops.resize(npop);
             //for (int ii = 0; ii<npop; ii++) {
@@ -403,7 +461,7 @@ RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
     class_<Metapop>("Metapop")
     
-    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP>("args: npop (int, number of cities), xymat (npop*2 matrix of city locations), couplemat (between-city coupling matrix), blocksize (number of days to preallocate), nstates (number of state variables), nstep (number of days per observation), schooltype (int, sin=0, force=1")
+    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP, SEXP>("args: npop (int, number of cities), xymat (npop*2 matrix of city locations), couplemat (between-city coupling matrix), blocksize (number of days to preallocate), nstates (number of state variables), nstep (number of days per observation)")
     /*
     .constructor<SEXP, SEXP>("args: blocksize (number of days to preallocate), nstates.")
     .method("steps", &SEIR::steps, "args: nday (int).  Advance model by nday steps" )
