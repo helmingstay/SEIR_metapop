@@ -181,7 +181,7 @@ class SEIR {
             //
             // multiple ways to do latent/imports...??
             if (rimports == 0 ) {
-                latent_rate = (beta_now*S*(Ieff))/N; 
+                latent_rate = (beta_now*S*(Ieff)); 
             } else {
                 switch ( rimportmethod ) {
                     case 1:
@@ -447,7 +447,7 @@ class Metapop {
                 pops[ithis].Ieff = 0;
                for ( iother = 0; iother < npop; iother++) {
                     // couplemat isn't symmetric -- step through this city's row
-                   pops[ithis].Ieff += couplemat(ithis, iother) * pops[iother].I;
+                   pops[ithis].Ieff += couplemat(ithis, iother) * (pops[iother].I/pops[iother].N);
                 }
             }
             // then take the next step for all pops
