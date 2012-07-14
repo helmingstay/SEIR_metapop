@@ -181,23 +181,45 @@ class SEIR {
             //
             // multiple ways to do latent/imports...??
             if (rimports == 0 ) {
+                // scaled for N at metapop level
                 latent_rate = (beta_now*S*(Ieff)); 
             } else {
                 switch ( rimportmethod ) {
+                    // no connection, all are *S
+                    // try 0, 
                     case 1:
-                        latent_rate = (beta_now*(S*Ieff + rimports))/N; 
+                        // constant random imports, no influence of pop 
+                        latent_rate = S*((beta_now*I)/N + rimports);
                         break;
                     case 2:
-                        latent_rate = ((beta_now*Ieff) + (rimports*pow(N, 1.5)))/N; 
+                        //  New try
+                        //  like 2, only moved N inside
+                        //  pulsed inmports, no pop 
+                        // divide rimports by rbeta0 so comparable between all
+                        latent_rate = S*(beta_now*(I/N + rimports/rbeta0));
                         break;
                     case 3:
-                        latent_rate = (beta_now*Ieff)/N + rimports;
+                        // constant random imports proportional/modified by to pop
+                        //  1.5 is constant param??
+                        latent_rate = S*((beta_now*I) + (rimports*pow(N, 1.5)))/N; 
                         break;
                     case 4:
-                        latent_rate = (beta_now*Ieff + rimports*N)/N;
+                        // constant random imports proportional/modified by to pop
+                        latent_rate = S*(beta_now*(I+ ((rimports/rbeta0)*pow(N, 1.5))))/N; 
                         break;
                     default:
-                        throw std::range_error("importmethod must be 1-4");
+                        throw std::range_error("importmethod must be 0-4");
+                        // constant random imports 
+                        // doesn't make sense?
+                        // latent_rate = S*((beta_now*I) + rimports)/N;
+                        /*
+                        case 2:
+                            // pulsed random imports
+                            // divide rimports by rbeta0 so comparable between all
+                            // doesn't make sense???
+                            latent_rate = S*(beta_now*(I + rimports/rbeta0))/N;
+                            break;
+                        */
                 }
             };
                         
