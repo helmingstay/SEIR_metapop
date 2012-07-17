@@ -39,7 +39,7 @@ class SEIR {
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
-        double S, E, Eobs, I, Ieff, Iobs, R, N, Neff, Shidden;
+        double S, E, Eobs, I, Ieff, Iobs, R, N, Shidden;
 
         void setpars(SEXP pars_) {
             // this is essentially part of the model definition
@@ -111,7 +111,6 @@ class SEIR {
             Iobs = tmp(5);
             R = tmp(6);
             N = tmp(7);
-            Neff = N;
             Shidden = tmp(8);
         }
 
@@ -178,7 +177,7 @@ class SEIR {
                 S += (S_fromhidden - S_tohidden);
                 Shidden += (S_tohidden - S_fromhidden);
             }; 
-            int nbirth = Rf_rpois( Neff*rbirth );
+            int nbirth = Rf_rpois( N*rbirth );
             // Effective I is computed at the metapop level for this timestep
             //
             // multiple ways to do latent/imports...??
@@ -245,9 +244,21 @@ class SEIR {
             int nrecover = myrpois( rgamma*I, I + ninfect );
             // since rpois needs positive rate, use absolute value of rdeltaR
             // to compute total number of events
-            ndeltaR = Rf_rpois( Neff * fabs(rdeltaR)); 
+            ndeltaR = Rf_rpois( N * fabs(rdeltaR)); 
             if ( rdeltaR < 0 ) { 
-                // if deltaR is negative, rhen change events to negative
+                // if deltaR is negative, then make sure there are enough R to remove
+                if (ndeltaR > R ) {
+                    // try to stay as close to mass balance as possible
+                    // without negative states
+                    // e.g. in extinction, we run out of R, so move as many 
+                    // from S to R as needed
+                    int diff = (ndeltaR -R);
+                     R += diff;
+                     if(S > diff) {
+                        S -= diff;
+                    }
+                }
+                //  then change events to negative
                 ndeltaR *= -1;
             }
             S +=  (nbirth - nlatent);
@@ -260,11 +271,6 @@ class SEIR {
             R += (nrecover + ndeltaR);
             N += (nbirth + ndeltaR);
             //Rf_PrintValue(wrap(day));
-            if ( day % 365 == 0 ) {
-                // not doing compound interest on births/deaths/migration
-                // set effective N on year boundaries
-                Neff = N;
-            }
             if ( day % nstep == 1 ) {
                 arma::colvec ret(nstates);
                 ret.zeros();
@@ -277,16 +283,20 @@ class SEIR {
                 ret(6) = R;
                 ret(7) = N;
                 ret(8) = Shidden;
-                // check for negative values
-                // Throw an exception if found
-                int statemin = min(ret);
-                if (statemin < 0) throw_negative_state();
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
                 // set observeds to zero
                 Eobs = 0;
                 Iobs = 0;
                 repday++;
+                // check for negative values
+                // Throw an exception if found
+                int statemin = min(ret);
+                if (statemin < 0) {
+                    Rf_PrintValue(wrap(day));
+                    Rf_PrintValue(wrap(ret));
+                    throw_negative_state();
+                }
             }
             //Rf_PrintValue(wrap(day));
         };
