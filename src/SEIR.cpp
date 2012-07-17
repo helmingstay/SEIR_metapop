@@ -56,6 +56,7 @@ class SEIR {
             rsigma = as<double>(pars["sigma"]);
             rgamma = as<double>(pars["gamma"]);
             // percap per day change in R
+            // includes death and migration
             rdeltaR = as<double>(pars["deltaR"]);
             // R0 used to calculate mean beta if schooltype == 0 (sin) !!fixme??
             rR0 = as<double>(pars["R0"]);
@@ -184,12 +185,26 @@ class SEIR {
                 // scaled for N at metapop level
                 latent_rate = (beta_now*S*(Ieff)); 
             } else {
+                Rcpp::List debug_report;
                 switch ( rimportmethod ) {
+                    case 0:
+                        // no imports
+                        latent_rate = S*(beta_now*I)/N;
+                        break;
                     // no connection, all are *S
                     // try 0, 
                     case 1:
                         // constant random imports, no influence of pop 
                         latent_rate = S*((beta_now*I)/N + rimports);
+                        if (0) {
+                            debug_report["S"] = S;
+                            debug_report["beta"] = beta_now;
+                            debug_report["I"] = I;
+                            debug_report["N"] = N;
+                            debug_report["imports"] = rimports;
+                            debug_report["latent_rate"] = latent_rate;
+                            //if( day % 1000 == 0)  Rf_PrintValue(debug_report);
+                        };
                         break;
                     case 2:
                         //  New try
@@ -227,13 +242,13 @@ class SEIR {
             int nlatent = myrpois( latent_rate, S + nbirth);
             int ninfect = myrpois( rsigma*E, E + nlatent );
             int nrecover = myrpois( rgamma*I, I + ninfect );
-            // if deltaR is negative, need a double negative
+            // since rpois needs positive rate, use absolute value of rdeltaR
+            // to compute total number of events
+            ndeltaR = Rf_rpois( N * fabs(rdeltaR)); 
             if ( rdeltaR < 0 ) { 
-                rdeltaR *= -1;
-                ndeltaR = Rf_rpois( N * rdeltaR); 
+                // if deltaR is negative, rhen change events to negative
                 ndeltaR *= -1;
             }
-            else { ndeltaR = Rf_rpois( N *  rdeltaR) ; };
             S +=  (nbirth - nlatent);
             E +=  (nlatent - ninfect);
             // instantaneous number infected
@@ -256,6 +271,10 @@ class SEIR {
                 ret(6) = R;
                 ret(7) = N;
                 ret(8) = Shidden;
+                // check for negative values
+                // Throw an exception if found
+                int statemin = min(ret);
+                if (statemin < 0) throw_negative_state();
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
                 // set observeds to zero
@@ -350,6 +369,15 @@ class SEIR {
                 //throw std::range_error("init vector cannot contain negative values");
             //};
             // check that all are integers!!
+            NumericVector dummy(1);
+            return dummy;
+            END_RCPP
+        }
+
+        SEXP throw_negative_state(void) {
+            // check that init is the right length
+            BEGIN_RCPP
+            throw std::range_error("State vector has negative values");
             NumericVector dummy(1);
             return dummy;
             END_RCPP
