@@ -32,14 +32,14 @@ class SEIR {
         // this should get changed when we add states
         unsigned int minparlen;
         int schooltype, rschoollag, rimportmethod;
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, rSresid, rSfrac, beta_now, deltat, rbetasd_ratio;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, beta_now, deltat; //, rbetasd_ratio, rSresid, rSfrac ;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
-        double S, E, Eobs, I, Ieff, Iobs, R, N, Shidden;
+        double S, E, Estep, I, Ieff, Istep, R, N, Eimport;
 
         void setpars(SEXP pars_) {
             // this is essentially part of the model definition
@@ -68,14 +68,14 @@ class SEIR {
             // modulate beta0 by this much
             rbetaforce = as<double>(pars["betaforce"]);
             // add daily normal forcing to beta with SD as a ratio of current value of beta
-            rbetasd_ratio = as<double>(pars["betasd_ratio"]);
+            // rbetasd_ratio = as<double>(pars["betasd_ratio"]);
             // modulates Reff
             rtheta = as<double>(pars["theta"]);
             // equilib proportion of susceptibles in hidden S class
             // set to 0 to disable hidden S
-            rSfrac = as<double>(pars["Sfrac"]);
+            //rSfrac = as<double>(pars["Sfrac"]);
             // equilib residency time of susceptibles in hidden S class
-            rSresid = as<double>(pars["Sresid"]);
+            //rSresid = as<double>(pars["Sresid"]);
             // 0 is sin, 1 is termtime
             schooltype = as<int>(pars["schooltype"]);
             // vector, only used if schooltype == 1
@@ -105,13 +105,14 @@ class SEIR {
             checkstate(tmp);
             S = tmp(0);
             E = tmp(1);
-            Eobs = tmp(2);
-            I = tmp(3);
-            Ieff = tmp(4);
-            Iobs = tmp(5);
-            R = tmp(6);
-            N = tmp(7);
-            Shidden = tmp(8);
+            I = tmp(2);
+            R = tmp(3);
+            N = S+E+I+R;
+            Ieff = 0;
+            // observaton variables, initialize to zero
+            Estep = 0;
+            Istep = 0;
+            Eimport = 0;
         }
 
     private:
@@ -126,8 +127,9 @@ class SEIR {
         void step(void) {
             // core model definition
             // modify state variables in-place, accumulate for reporting
-            double latent_rate;
-            int ndeltaR;
+            // separate internal from external (imports)
+            double latent_rate, import_rate;
+            int ndeltaR, nbirth, nimport, nlatent, ninfect, nrecover;
             // births adjusted for infant mortality
             // deaths and migrations included in deltaR
             // no deaths from SEI
@@ -147,10 +149,11 @@ class SEIR {
                 int doy = (day-rschoollag+365) % 365;
                 beta_now = rbeta0*pow(1.0+rbetaforce, rschooldays( doy ));
             };
-            if (rbetasd_ratio != 0 ) {
+            /*if (rbetasd_ratio != 0 ) {
                 // normal noise perterbation of beta, with sd given as proportion of beta
                 beta_now = Rf_rnorm(beta_now, beta_now*rbetasd_ratio);
             }
+            */
             //
             // old
             // theta = 0, density dependent, theta=1, freq depend.
@@ -167,7 +170,7 @@ class SEIR {
             ////////////////////////////
             // end modifications of beta
             /////////////////////////
-            if ( rSfrac != 0 ) {
+            /*if ( rSfrac != 0 ) {
                 // A "hidden" S class, doesn't seem to do much,
                 // can only respond if residence time is very small
                 // dSh = + a*S - b*Sh;  resid = 1/b, a/b=frac;  a = frac/resid, b = 1/resid
@@ -177,26 +180,31 @@ class SEIR {
                 S += (S_fromhidden - S_tohidden);
                 Shidden += (S_tohidden - S_fromhidden);
             }; 
-            int nbirth = Rf_rpois( N*rbirth );
+            */
+            nbirth = Rf_rpois( N*rbirth );
             // Effective I is computed at the metapop level for this timestep
             //
             // multiple ways to do latent/imports...??
+            // everyone gets the same internal dynamics
+            latent_rate = (beta_now*S*I)/N; 
             if (rimports == 0 ) {
-                // scaled for N at metapop level
-                latent_rate = (beta_now*S*(Ieff)); 
+                // Ieff is scaled for N at metapop level
+                // changed so self-connect == 0
+                import_rate = beta_now*S*Ieff; 
             } else {
-                Rcpp::List debug_report;
+                // manual imports, multiply by S at the end
                 switch ( rimportmethod ) {
                     case 0:
                         // no imports
-                        latent_rate = S*(beta_now*I)/N;
+                        import_rate = 0;
                         break;
                     // no connection, all are *S
                     // try 0, 
                     case 1:
                         // constant random imports, no influence of pop 
-                        latent_rate = S*((beta_now*I)/N + rimports);
+                        import_rate = rimports;
                         if (0) {
+                            Rcpp::List debug_report;
                             debug_report["S"] = S;
                             debug_report["beta"] = beta_now;
                             debug_report["I"] = I;
@@ -207,41 +215,36 @@ class SEIR {
                         };
                         break;
                     case 2:
-                        //  New try
                         //  like 2, only moved N inside
                         //  pulsed inmports, no pop 
                         // divide rimports by rbeta0 so comparable between all
-                        latent_rate = S*(beta_now*(I/N + rimports/rbeta0));
+                        import_rate = beta_now*(rimports/rbeta0);
                         break;
                     case 3:
                         // constant random imports proportional/modified by to pop
                         //  1.5 is constant param??
-                        latent_rate = S*((beta_now*I) + (rimports*pow(N, 1.5)))/N; 
+                        import_rate  = (rimports*pow(N, 1.5))/N;
                         break;
                     case 4:
-                        // constant random imports proportional/modified by to pop
-                        latent_rate = S*(beta_now*(I+ ((rimports/rbeta0)*pow(N, 1.5))))/N; 
+                        // pulsed random imports proportional/modified by to pop
+                        import_rate = (beta_now*(I+ ((rimports/rbeta0)*pow(N, 1.5))))/N; 
                         break;
                     default:
                         throw std::range_error("importmethod must be 0-4");
-                        // constant random imports 
-                        // doesn't make sense?
-                        // latent_rate = S*((beta_now*I) + rimports)/N;
-                        /*
-                        case 2:
-                            // pulsed random imports
-                            // divide rimports by rbeta0 so comparable between all
-                            // doesn't make sense???
-                            latent_rate = S*(beta_now*(I + rimports/rbeta0))/N;
                             break;
-                        */
-                }
+                } // end switch
+                // multiply case 0-4 imports by S at the end
+                import_rate *= S;
             };
                         
-            //int latent_rate = (beta_eff*S*(Ieff+rimports))/N 
-            int nlatent = myrpois( latent_rate, S + nbirth);
-            int ninfect = myrpois( rsigma*E, E + nlatent );
-            int nrecover = myrpois( rgamma*I, I + ninfect );
+            // imports are not constrained by max # events, e.g. not mass-balance
+            nimport = Rf_rpois( import_rate);
+            // number of new exposed rrom local dynamics
+            nlatent = myrpois( latent_rate, S + nbirth) ;
+            // add in imports
+            nlatent += nimport;
+            ninfect = myrpois( rsigma*E, E + nlatent );
+            nrecover = myrpois( rgamma*I, I + ninfect );
             // since rpois needs positive rate, use absolute value of rdeltaR
             // to compute total number of events
             ndeltaR = Rf_rpois( N * fabs(rdeltaR)); 
@@ -265,9 +268,10 @@ class SEIR {
             E +=  (nlatent - ninfect);
             // instantaneous number infected
             I +=  (ninfect - nrecover);
-            Eobs += nlatent;
             // prevalence -- all infected in this reporting period (nstep)
-            Iobs +=  ninfect;
+            Estep += nlatent;
+            Eimport += nimport;
+            Istep +=  ninfect;
             R += (nrecover + ndeltaR);
             N += (nbirth + ndeltaR);
             //Rf_PrintValue(wrap(day));
@@ -276,18 +280,19 @@ class SEIR {
                 ret.zeros();
                 ret(0) = S;
                 ret(1) = E;
-                ret(2) = Eobs;
+                ret(2) = Estep;
                 ret(3) = I;
-                ret(4) = Ieff;
-                ret(5) = Rf_rbinom(Iobs, rpobs);
+                ret(4) = Istep;
+                ret(5) = Rf_rbinom(Istep, rpobs);
                 ret(6) = R;
                 ret(7) = N;
-                ret(8) = Shidden;
+                ret(8) = Eimport;
                 //ret(4) = Rf_rbinom(I, rpobs);
                 state.col(repday) = ret;
-                // set observeds to zero
-                Eobs = 0;
-                Iobs = 0;
+                // set step sums to zero
+                Estep = 0;
+                Eimport = 0;
+                Istep = 0;
                 repday++;
                 // check for negative values
                 // Throw an exception if found
@@ -378,8 +383,8 @@ class SEIR {
         SEXP checkstate(NumericVector init_) {
             // check that init is the right length
             BEGIN_RCPP
-            if ( init_.size() != nstates )  {
-                throw std::range_error("init vector has incorrect dimensions");
+            if ( init_.size() != 4 )  {
+                throw std::range_error("init vector has incorrect dimensions -- SEIR");
             };
             //if ( init_.min() < 0 ) {
                 //throw std::range_error("init vector cannot contain negative values");
@@ -465,8 +470,8 @@ class Metapop {
         SEXP setstates( SEXP citystates) {
             NumericMatrix tmpmat(citystates);
             BEGIN_RCPP
-            if ( (tmpmat.rows() != npop)  || (tmpmat.ncol() != nstates) ) {
-                throw std::range_error("improper dimensions of state matrix -- npop rows and nstate cols");
+            if ( (tmpmat.rows() != npop)  || (tmpmat.ncol() != 4) ) {
+                throw std::range_error("improper dimensions of state matrix -- npop rows and 4 cols (SEIR)");
             };
             for ( int ii = 0; ii < npop; ii++) {
                pops[ii].setstate( wrap(tmpmat(ii,_))) ;
@@ -540,7 +545,7 @@ RCPP_MODULE(seirmod){
     .method("report", &Metapop::report, "args: none.  Return ordered list of named lists, each containing all current variables for 1 city.")
     .method("cityreport", &Metapop::cityreport, "args: none.  Return named list containing all current variables. for this city")
     .method("setcity", &Metapop::setcity, "args: int citynumber")
-    .method("setstates", &Metapop::setstates, "args: npopXnstate matrix of states for current timestep")
+    .method("setstates", &Metapop::setstates, "args: npop*4 (SEIR) matrix of states for current timestep")
     .method("setpars", &Metapop::setpars, "args: list-of-list of length npop, each containing that city's parameters")
     .method("steps", &Metapop::steps, "args: number of steps to advance all cities")
     ;
