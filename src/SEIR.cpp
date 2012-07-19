@@ -32,7 +32,7 @@ class SEIR {
         // this should get changed when we add states
         unsigned int minparlen;
         int schooltype, rschoollag, rimportmethod;
-        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rtheta, rimports, beta_now, deltat; //, rbetasd_ratio, rSresid, rSfrac ;
+        double rbirth, rsigma , rgamma , rdeltaR , rR0 , rpobs , rbetaforce, rbeta0, rimports, beta_now, deltat; //, rtheta, rbetasd_ratio, rSresid, rSfrac ;
         NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
@@ -70,7 +70,7 @@ class SEIR {
             // add daily normal forcing to beta with SD as a ratio of current value of beta
             // rbetasd_ratio = as<double>(pars["betasd_ratio"]);
             // modulates Reff
-            rtheta = as<double>(pars["theta"]);
+            //rtheta = as<double>(pars["theta"]);
             // equilib proportion of susceptibles in hidden S class
             // set to 0 to disable hidden S
             //rSfrac = as<double>(pars["Sfrac"]);
@@ -81,7 +81,8 @@ class SEIR {
             // vector, only used if schooltype == 1
             rschooldays = pars["schooldays"];
             // lag of school term or sin
-            rschoollag = as<int>(pars["schoollag"]);
+            //rschoollag = as<int>(pars["schoollag"]);
+            rschoollag = 0;
             // rate of imports, meaning depends on importmethdo
             rimports = as<double>(pars["imports"]);
             // 1-4 different equations to incorporate imports into  (beta S I) / N
@@ -139,9 +140,7 @@ class SEIR {
             if (schooltype == 0) {
                 //sin forcing
                 beta_now = 
-                  rR0*rgamma*
-                  (1.0-rbetaforce*
-                    cos(2.0*Pi*(day-rschoollag)/365.0));
+                  rR0*rgamma* (1.0-rbetaforce* cos(2.0*Pi*(day-rschoollag)/365.0));
             };
             if (schooltype == 1) {
                 //termtime forcing, schoold scedule passed in as vector of 0/1??
@@ -164,9 +163,9 @@ class SEIR {
             // rtheta < 0, small cities have lower beta
             // rtheta << max city size
             // 
-            if (rtheta != 0 ) {
-                beta_now = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
-            };
+            //if (rtheta != 0 ) {
+                //beta_now = beta_now * ( 1.0+ (rtheta/(abs(rtheta) +N)));
+            //};
             ////////////////////////////
             // end modifications of beta
             /////////////////////////
@@ -188,6 +187,7 @@ class SEIR {
             // everyone gets the same internal dynamics
             latent_rate = (beta_now*S*I)/N; 
             if (rimports == 0 ) {
+                // Metapop!
                 // Ieff is scaled for N at metapop level
                 // changed so self-connect == 0
                 import_rate = beta_now*S*Ieff; 
