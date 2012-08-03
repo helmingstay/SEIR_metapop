@@ -7,7 +7,7 @@ class SEIR {
         SEIR( SEXP blocksize_, SEXP nstates_, SEXP nstep_):
           //spos(spos_), 
           blocksize(as<int>(blocksize_)), //maxday(as<int>(blocksize_)), 
-          nstates(as<unsigned int>(nstates_)), day(0), repday(0), 
+          nstates(as<unsigned int>(nstates_)), day(0), week(0), repday(0), 
           nstep(as<int>(nstep_)), 
           Pi(4*atan(1)), 
           minparlen(14) {
@@ -36,6 +36,7 @@ class SEIR {
         NumericVector rschooldays;  //-1 for vacation, 1 for school
 
     public:
+        unsigned int week;       // current week of the model -- day % nstep, queried by metapop
         // model-dependent variables and methods
         // these need to be easily accessed by metapop
         // use doubles avoid confusion when multiplying by params
@@ -276,6 +277,7 @@ class SEIR {
             N += (nbirth + ndeltaR);
             //Rf_PrintValue(wrap(day));
             if ( day % nstep == 1 ) {
+                week++;
                 arma::colvec ret(nstates);
                 ret.zeros();
                 ret(0) = S;
@@ -341,6 +343,14 @@ class SEIR {
             arma::colvec tmp(arma::trans(state.row(whichstate)));
             return wrap(tmp);
         }
+
+        arma::colvec getstate_filled(int whichstate) {
+            // get the full history of the given state 
+            // only return weeks that have been recoded
+            arma::colvec tmp(arma::trans(state.row(whichstate)));
+            tmp.resize(week);
+            return tmp;
+        }
         
         
         NumericVector getday(unsigned int i) {
@@ -348,7 +358,8 @@ class SEIR {
             arma::rowvec tmp(state.col(i));
             return wrap( tmp );
         }
-
+        
+        
 
         void fillstate( int fillval ) {
             // fill the state with int (typically 0?)
@@ -448,6 +459,16 @@ class Metapop {
             return ret; 
         }
 
+        NumericMatrix get_metapop_state(int n) {
+            int nweek = pops[1].week;
+            arma::mat  ret(nweek, npop);
+            for (unsigned int ii=0; ii<npop; ii++) {
+                ret.col(ii) = pops[ii].getstate_filled(n-1);
+            };
+            return wrap (ret);
+        }
+
+
         List report() {
             Rcpp::List ret;
             for (unsigned int ii=0; ii<npop; ii++) {
@@ -544,6 +565,7 @@ RCPP_MODULE(seirmod){
     */
     .method("report", &Metapop::report, "args: none.  Return ordered list of named lists, each containing all current variables for 1 city.")
     .method("cityreport", &Metapop::cityreport, "args: none.  Return named list containing all current variables. for this city")
+    .method("get_metapop_state", &Metapop::get_metapop_state, "args: int, which state column to return (1-based indexing).  Return matrix of all cities, given state")
     .method("setcity", &Metapop::setcity, "args: int citynumber")
     .method("setstates", &Metapop::setstates, "args: npop*4 (SEIR) matrix of states for current timestep")
     .method("setpars", &Metapop::setpars, "args: list-of-list of length npop, each containing that city's parameters")
