@@ -1,23 +1,30 @@
-
 using namespace Rcpp;
 
 class Events {
     public:
-        Events( SEXP transmat_, SEXP istate_, SEXP ievent_, Parlist pars_):
-            transmat(transmat), 
-            istate(istate),
-            ievent(ievent) 
+        Events( SEXP transmat_, SEXP states_, SEXP events_, SEXP accum_):
+            // prep states, events, and accum as named lists in R
+            // events are cols, states are rows
+            transmat(transmat),
+            states(states_),
+            events(events_),
+            //name variables to accumulate
+            accum(accum_)
             {
-                rates = NumericVector( ievent.size() )
+                nstates = states.size();
+                nevents = events.size();
+                naccum = accum.size();
             }
+        void setpars(SEXP pars_) {
+            // pass a list of parameters in to change the parlist
+            pars.set(pars_);
+        }
+        Rcpp::List states, events, accum;
+        int nstates, nevents, naccum;
 
     private:
         // transition as columns, state variables as rows
         IntegerMatrix transmat;
-        // named list mapping rownames to numeric (zero-based) index  
-        Rcpp::List istate;
-        // named list mapping colnames to numeric (zero-based) index  
-        Rcpp::List ievent;
         Parlist pars;
         
         // required local variables
@@ -31,15 +38,8 @@ class Events {
         }
 
     public:
-        void setpars(SEXP pars_) {
-            // pass a list of parameters in to change the parlist
-            pars.set(pars_);
-        }
-        NamedVec states;
-        // computed rates of all events?? or just number of events...
-        //NamedVec rates;
-        NamedVec events;
-        NamedVec accum;
+
+        // begin model definition
         void prepEvents(int istep) {
             // function to update the rates
             // takes time
@@ -67,12 +67,12 @@ class Events {
             //
             // multiple ways to do latent/imports...??
             // everyone gets the same internal dynamics
-            latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
+            latent_rate = (beta_now*states["S"]*states["I"])/states["N"]; 
             if (pars.d("imports")== 0 ) {
                 // Metapop!
                 // Ieff is scaled for N at metapop level
                 // changed so self-connect == 0
-                import_rate = beta_now*states("S")*states("Ieff"); 
+                import_rate = beta_now*states["S"]*states["Ieff"]; 
             } else {
                 // manual imports, multiply by S at the end
                 switch ( pars.i("importmethod")) {
@@ -106,62 +106,66 @@ class Events {
                     // implement
                     //case 3:
                         // constant random imports proportional/modified by to pop
-                        // import_rate  = (pars.i("imports")*pow(states("N"), pars.d("import_power")))/states("N");
+                        // import_rate  = (pars.i("imports")*pow(states["N"], pars.d("import_power")))/states["N"];
                      //   break;
                     //case 4:
                         // pulsed random imports proportional/modified by to pop
-                        //import_rate = (beta_now*(states("I")+ 
+                        //import_rate = (beta_now*(states["I"]+ 
                         //              ((pars.i("imports")/pars.i("beta0"))
-                        //                  * pow(states("N"), pars.d("import_power")))))/states("N"); 
+                        //                  * pow(states["N"], pars.d("import_power")))))/states["N"]; 
                         //break;
                     default:
                         throw std::range_error("importmethod not implemented");
                             break;
                 } // end switch
                 // multiply imports by S at the end
-                import_rate *= states("S");
+                import_rate *= states["S"];
             };
         };                
 
         void calcEvents(int istep) {
-            events("birth") = myrpois( states("N") * pars.d("birth"), states("N")) ;
+            events["birth"] = myrpois( states["N"] * pars.d("birth"), states["N"]) ;
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
-                events("imports") = Rf_rpois( import_rate );
+                events["imports"] = Rf_rpois( import_rate );
             };
-            events("latent") = myrpois( latent_rate, states("S")+ events("birth")) ;
-            events("infect") = myrpois( pars.d("sigma") * states("E"), states("E") + events("latent"));
-            events("recover") = myrpois( pars.d("gamma") * states("I"), states("I") + events("infect"));
+            events["latent"] = myrpois( latent_rate, states["S"]+ events["birth"]) ;
+            events["infect"] = myrpois( pars.d("sigma") * states["E"], states["E"] + events["latent"]);
+            events["recover"] = myrpois( pars.d("gamma") * states["I"], states["I"] + events["infect"]);
             if ( pars.d("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events("deltaR") = myrpois( states("N")* fabs(pars.d("deltaR")), states("R")); 
+                events["deltaR"] = myrpois( states["N"]* fabs(pars.d("deltaR")), states["R"]); 
                 // then set negative
-                events("deltaR") *= -1;
+                events["deltaR"] *= -1;
             } else {
                 // otherwise we're adding
-                events("deltaR") = Rf_rpois( states("N")* fabs(pars.d("deltaR"))); 
+                events["deltaR"] = Rf_rpois( states["N"]* fabs(pars.d("deltaR"))); 
             };
         };
 
         void accumEvents(int istep) {
-            accum("E") += events("latent")
-            accum("Eimport") += events("imports")
-            accum("I") += events("infect")
+            // can we use the names of accum to do this programmatically?
+            accum["latent"] += events["latent"]
+            accum["imports"] += events["imports"]
+            accum["infect"] += events["infect"]
         }
         
         arma::colvec observe(bool all) {
             if (all) {
+                arma::colvec ret(nevents + naccum);
                 // get accumulated and actual, concatenate
-                NamedVec ret = events + accum;
-                return ret.colvec();
+                for (int i = 0; i< naccum; i++) {
+                    ret[i] = accum[i];
+                }
+                for (int i = 0; i< nevents; i++) {
+                    ret[naccum+i] = nevents[i];
+                }
             } else {
                 // otherwise only return accumulated
-                return accum.colvec();
+                arma::colvec ret = as<arma::colvec>(naccum);
             }
-            // add states and accumulated states to the observation
-            //arma::colvec ret( events.size() + accum.size())
-            //ret.subvec(0, events.size()) = events.colvec()
-            //ret.subvec(events.size()+1, ret.n_elem) = accum.colvec()
-            // turn the resu
+            // reset the accumulated 
+            std::fill(accum.begin(), accum.end(), 0);
+            return ret;
         };
 };
