@@ -2,33 +2,50 @@ using namespace Rcpp;
 
 class Events {
     public:
-        Events( SEXP transmat_, SEXP states_, SEXP events_, SEXP accum_):
+        Events( SEXP transmat_, SEXP states_, SEXP events_, SEXP accum_, SEXP obsall_, SEXP nobs_):
             // prep states, events, and accum as named lists in R
             // events are cols, states are rows
             transmat(transmat),
             states(states_),
             events(events_),
             //name variables to accumulate
-            accum(accum_)
+            accum(accum_),
+            obsall(as<bool>(obsall_)), 
+            nobs(as<int>(nobs_)),
+            iobs(0),
+            Pi(arma::datum::pi)
             {
                 nstates = states.size();
                 nevents = events.size();
                 naccum = accum.size();
+                if ( obsall ) {
+                    nobsvars = naccum + nstates;
+                } else {
+                    nobsvars = naccum;   
+                }
+                obsmat = arma::mat(nobsvars, nobs);
+                obsmat.zeros();
             }
         void setpars(SEXP pars_) {
             // pass a list of parameters in to change the parlist
             pars.set(pars_);
         }
-        Rcpp::List states, events, accum;
-        int nstates, nevents, naccum;
+        Rcpp::List states, events, accum, iobs;
+        arma::mat obsmat;      // the observation matrix - "final" output - grow as needed
 
     private:
         // transition as columns, state variables as rows
         IntegerMatrix transmat;
+        bool obsall;
+        unsigned int blocksize;     // grow observation by this much when needed
+        unsigned int maxsteps;      // current ncol of observation - must grow if more are needed
+        unsigned int nobsvars;       // number of obsvars == number of rows in obs matrix
+        unsigned int nstates, nevents, naccum, nobs;
         Parlist pars;
         
         // required local variables
         double beta_now, latent_rate, import_rate; 
+        double Pi;
 
         #include <algorithm>
         // rpois that returns an int no larger than second arg
@@ -38,6 +55,10 @@ class Events {
         }
 
     public:
+
+        void setStates(NumericVector newstates) {
+            std::copy(newstates.begin(), newstates.end(), states.begin());
+        }
 
         // begin model definition
         void prepEvents(int istep) {
@@ -149,9 +170,27 @@ class Events {
             accum["imports"] += events["imports"]
             accum["infect"] += events["infect"]
         }
-        
-        arma::colvec observe(bool all) {
-            if (all) {
+
+        void updateStates(int istep) {
+            // use transmat to update states from events
+            // TODO!!
+                // check for negative values
+                // Throw an exception if found
+                int statemin = min(states);
+                if (statemin < 0) {
+                    Rf_PrintValue(wrap(istep));
+                    Rf_PrintValue(wrap(states));
+                    throw_negative_state();
+                }
+        }
+
+
+        void observe() {
+            if ( iobs +1 > nobs) {
+                //impelemnt resize of state arma matrix here
+                throw std::range_error("took too many observations");
+            }
+            if (obsall) {
                 arma::colvec ret(nevents + naccum);
                 // get accumulated and actual, concatenate
                 for (int i = 0; i< naccum; i++) {
@@ -166,6 +205,16 @@ class Events {
             }
             // reset the accumulated 
             std::fill(accum.begin(), accum.end(), 0);
-            return ret;
+            obsmat.col(iobs) = ret;
+            iobs++;
         };
+
+        SEXP throw_negative_state(void) {
+            // check that init is the right length
+            BEGIN_RCPP
+            throw std::range_error("State vector has negative values");
+            NumericVector dummy(1);
+            return dummy;
+            END_RCPP
+        }
 };
