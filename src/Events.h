@@ -166,9 +166,14 @@ class Events {
 
         void accumEvents(int istep) {
             // can we use the names of accum to do this programmatically?
-            accum["latent"] += events["latent"]
-            accum["imports"] += events["imports"]
-            accum["infect"] += events["infect"]
+            Rcpp::List accum_vars_ = accum.attr("names");
+            std::vector< std::string> accum_vars = Rcpp::as< std::vector< std::string> >(accum_vars_);
+            int nn = accum_vars.size();
+            for (int ii = 0; ii < nn; ii++) {
+                std::vector myname = accum_vars[ii];
+                // e.g. latents, import, infect
+                accum[myname] += events[myname];
+            }
         }
 
         void updateStates(int istep) {
@@ -183,7 +188,6 @@ class Events {
                     throw_negative_state();
                 }
         }
-
 
         void observe() {
             if ( iobs +1 > nobs) {
