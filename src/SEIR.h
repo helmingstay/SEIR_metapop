@@ -23,7 +23,6 @@ class SEIR {
             if( !isready ) {
                 throw_not_initialize();
             };
-            prepEvents(istep);
             calcEvents(istep);
             accumEvents(istep);
             updateStates(istep);

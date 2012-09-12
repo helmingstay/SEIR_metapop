@@ -2,12 +2,10 @@ using namespace Rcpp;
 
 class Events {
     public:
-        Events( SEXP transmat_, SEXP states_, SEXP events_, SEXP accum_, SEXP obsall_, SEXP nobs_):
+        Events( SEXP transmat_, SEXP accum_, SEXP obsall_, SEXP nobs_):
             // prep states, events, and accum as named lists in R
             // events are cols, states are rows
             transmat(transmat),
-            states(states_),
-            events(events_),
             //name variables to accumulate
             accum(accum_),
             obsall(as<bool>(obsall_)), 
@@ -15,14 +13,28 @@ class Events {
             iobs(0),
             Pi(arma::datum::pi)
             {
-                nstates = states.size();
-                nevents = events.size();
+                // pull out row and column names from transmat,
+                // get vectors of the names and size
+                Rcpp::List transmat_dimnames = transmat_attr.attr("dimnames");
+                // states
+                state_vars = mk_names( transmat_dimnames[0] );
+                states = mk_list(state_vars);
+                nstates = state_vars.size();
+                // events
+                event_vars = mk_names( transmat_dimnames[1] );
+                events = mk_list(event_vars);
+                nevents = event_vars.size();
+                // accum is handed in as a named list
+                 accum_vars = mk_names( accum.attr("names") );
                 naccum = accum.size();
                 if ( obsall ) {
+                    // observe all states plus all accumulators
                     nobsvars = naccum + nstates;
                 } else {
+                    // just observe accumulators
                     nobsvars = naccum;   
                 }
+                // initialize observation matrix with zero-fill
                 obsmat = arma::mat(nobsvars, nobs);
                 obsmat.zeros();
             }
@@ -37,6 +49,7 @@ class Events {
         // transition as columns, state variables as rows
         IntegerMatrix transmat;
         bool obsall;
+        std::vector< std::string>  state_vars, event_vars, accum_vars;
         unsigned int blocksize;     // grow observation by this much when needed
         unsigned int maxsteps;      // current ncol of observation - must grow if more are needed
         unsigned int nobsvars;       // number of obsvars == number of rows in obs matrix
@@ -48,23 +61,44 @@ class Events {
         double Pi;
 
         #include <algorithm>
-        // rpois that returns an int no larger than second arg
         int myrpois( double rate, int mymax) {
+            // rpois that returns an int no larger than second arg
             int result = Rf_rpois( rate );
             return std::min(result, mymax);
         }
+        std::vector< std::string> mk_names( Rcpp::List names_list ) {
+            // function to turn list of names (from attributes) into vector suitable for list indexing
+            std::vector< std::string> ret = Rcpp::as< std::vector< std::string> >(names_list);
+            return ret;
+        }
+        Rcpp::List mk_list( std::vector< std::string> list_names ) {
+            // function to turn named list from vector of names
+            // initialize list by size
+            Rcpp::List ret( list_names.size() );
+            // set names
+            ret.attr("names") = list_names;
+            return ret;
+        }
 
     public:
-
         void setStates(NumericVector newstates) {
+            // check range
+            if ( newstates.size() != states.size() ){
+                stop  // throw exception, FIXME!!
+            }
             std::copy(newstates.begin(), newstates.end(), states.begin());
         }
 
         // begin model definition
-        void prepEvents(int istep) {
-            // function to update the rates
-            // takes time
-            // Model definition
+        };                
+
+        void calcEvents(int istep) {
+            // this is the *only* user-modifiable function
+            // in combination with the transition matrix, this is the model
+            // should be a private function that takes pars, states, and istep
+            // FIXME!!
+            // all other vars are local
+            
             ////////////////////////////
             // many in-place, sequential, possible modifications of beta
             /////////////////////////
@@ -142,9 +176,9 @@ class Events {
                 // multiply imports by S at the end
                 import_rate *= states["S"];
             };
-        };                
 
-        void calcEvents(int istep) {
+
+            // done with prep, now compute events 
             events["birth"] = myrpois( states["N"] * pars.d("birth"), states["N"]) ;
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
@@ -165,11 +199,9 @@ class Events {
         };
 
         void accumEvents(int istep) {
+            // this doesn't need to be user-modifiable
             // can we use the names of accum to do this programmatically?
-            Rcpp::List accum_vars_ = accum.attr("names");
-            std::vector< std::string> accum_vars = Rcpp::as< std::vector< std::string> >(accum_vars_);
-            int nn = accum_vars.size();
-            for (int ii = 0; ii < nn; ii++) {
+            for (int ii = 0; ii < naccum; ii++) {
                 std::vector myname = accum_vars[ii];
                 // e.g. latents, import, infect
                 accum[myname] += events[myname];
@@ -177,21 +209,31 @@ class Events {
         }
 
         void updateStates(int istep) {
-            // use transmat to update states from events
-            // TODO!!
-                // check for negative values
-                // Throw an exception if found
-                int statemin = min(states);
-                if (statemin < 0) {
-                    Rf_PrintValue(wrap(istep));
-                    Rf_PrintValue(wrap(states));
-                    throw_negative_state();
+            int ievent, istate;
+            std::string event_name, state_name; 
+            for ( ievent = 0; ievent < nevents; ievent++) {
+                event_name = event_names[ievent];
+                for ( istate = 0; istate < nstates; istates++) {
+                    state_name = state_names[istate];
+                    // update states based on the cell of the transmission matrix 
+                    // times the number of events
+                    states[state_name] +=  ( transmat( istate, ievent) * events[event_name]);
                 }
+            }
+            // then check for negative values
+            // Throw an exception if found
+            int statemin = min(states);
+            if (statemin < 0) {
+                Rf_PrintValue(wrap(istep));
+                Rf_PrintValue(wrap(states));
+                throw_negative_state();
+            }
         }
 
         void observe() {
             if ( iobs +1 > nobs) {
-                //impelemnt resize of state arma matrix here
+                //TODO?? impelemnt resize of state arma matrix here
+                // Does nobs argument supercede this?
                 throw std::range_error("took too many observations");
             }
             if (obsall) {
