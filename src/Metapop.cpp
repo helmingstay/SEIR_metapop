@@ -1,46 +1,44 @@
 #include <Rcpp.h>       
 #include <RcppArmadillo.h>
 #include "Parlist.h"
-#include "SEIR.h"
+#include "Pop.h"
 using namespace Rcpp; 
 
 class Metapop { 
     public:
-        Metapop(SEXP npop_, SEXP xymat_, SEXP cmat_, SEXP blocksize,  SEXP obs_nstep) : 
-           npop(as<unsigned int>(npop_)), xymat(xymat_), couplemat(cmat_)
+        Metapop(SEXP npop_, SEXP xymat_, SEXP couplemat_, SEXP initstates_,
+                SEXP transmat_, SEXP accum_, SEXP obsall_, SEXP nobs,  SEXP obs_nstep ) : 
+           npop(as<unsigned int>(npop_)), xymat(xymat_), couplemat(couplemat_)
         {
             // initialize a single population
-            SEIR tmpseir(obs_nstep);
+            Pop tmppop( transmat_, accum_, obsall_, nobs_, obs_nstep_);
             // then make a vector of them
-            pops = std::vector<SEIR>(npop, tmpseir);
+            pops = std::vector<Pop>(npop, tmppop);
             // check that nrow xymat == npop!!??
-        }
-
-        void init(SEXP initstates_, SEXP transmat_, SEXP states_, SEXP events_, SEXP accum_, SEXP obsall_, SEXP nobs_) {
+            //  
+            // Set states of each pop
             // ?? check that dimensions of initstates matches 
-            // states as rows, cities as cols
-            NumericMatrix initstates(initstates);
-            // create a temp event and then add it to each population
-            Events tmpevents = Events(transmat_, states_, events_, accum_, obsall_, nobs_);
+            // for initstates, states are rows, pops are cols
+            NumericMatrix initstates(initstates_);
             for (unsigned int ii=0; ii<npop; ii++) {
-                pops[ii].events = tmpevents;
                 // grab the column for this city
                 NumericVector tmpinit = initstates( _, ii);
-                pops[ii].events.setStates( tmpinit);
-                pops[ii].ready();
+                pops[ii].states.copy( tmpinit);
             };
         };
+        }
+
 
         NumericMatrix get_metapop_state(int n) { 
             // takes R-style 1-based index of state to retrieve
             // returns matrix of observed history of that state for each pop
             // cities as cols, rows as time
-            int nobs = pops[npop].events.iobs;
+            int nobs = pops[npop].iobs;
             arma::mat  ret(nobs, npop);
             for (unsigned int ii=0; ii<npop; ii++) {
                 ret.col(ii) = pops[ii].getstate(n-1);
             };
-            return wrap (ret);
+            return wrap(ret);
         } 
 
         SEXP setpars( SEXP pars) {
@@ -52,13 +50,14 @@ class Metapop {
                 throw std::range_error(" the paramater list of lists should have npop elements");
             };
             for ( unsigned int ii = 0; ii < npop; ii++) {
-               pops[ii].events.setpars( tmppars(ii)) ;
+               pops[ii].pars.set( tmppars(ii) ) ;
             } 
             END_RCPP
         }
 
         void steps( int n ) {
             // advance the model forward n steps
+            RNGScope scope; // when to call this?
             for (int ii = 0; ii<n; ii++) {
                 prestep();
                 step();
@@ -68,11 +67,12 @@ class Metapop {
 
     private:
         unsigned int npop;
-        std::vector<SEIR> pops;
+        std::vector<Pop> pops;
         NumericMatrix xymat;  //distance matrix between cities
         NumericMatrix couplemat;  //metapop coupling matrix between cities
 
         void prestep(){
+            // FIXME!!
             // functions that need to be completed outside of individual pops
             // pre-intrapop step
             //
@@ -84,11 +84,11 @@ class Metapop {
             // first, get and save effective I for each pop
             for ( ithis = 0; ithis < npop; ithis++) {
                 //reset
-                pops[ithis].Ieff = 0;
-               for ( iother = 0; iother < npop; iother++) {
+                //pops[ithis].Ieff = 0;
+               //for ( iother = 0; iother < npop; iother++) {
                     // couplemat isn't symmetric -- step through this city's row
-                   pops[ithis].Ieff += couplemat(ithis, iother) * (pops[iother].I/pops[iother].N);
-               }
+                   //pops[ithis].Ieff += couplemat(ithis, iother) * (pops[iother].I/pops[iother].N);
+               //}
             }
         };
 
@@ -100,7 +100,7 @@ class Metapop {
             //  intra-population functions
             // take the next step for each pop
             for ( ithis = 0; ithis < npop; ithis++) {
-               pops[ithis].steps( 1 );
+               pops[ithis].step();
             } 
         }
 };
@@ -110,29 +110,24 @@ RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
     class_<Metapop>("Metapop")
     
-    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP, SEXP>("args: 
-                        npop (int, number of cities), 
-                        xymat (npop*2 matrix of city locations), 
-                        couplemat (between-city coupling matrix), 
-                        blocksize (number of observations to preallocate),  
-                        obs_step (number of steps per observation)"
+    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP, SEXP>("args: \
+            npop (int, number of cities), \
+            xymat (npop*2 matrix of city locations, currently unused), \
+            couplemat (between-city coupling matrix), \
+            initstates_ (nstate*ncity matrix of initial states), \
+            transmat_    (nstate * nevent matrix, number of transitions per event for each state),\
+            accum_,     (named list as above),\
+            obsall_     (bool, yes observes states and accum), \
+            nobs_       ( int, max number of observations), \
+            obs_nstep (number of steps per observation)" 
     )
-    .method("get_metapop_state", &Metapop::get_metapop_state, "args: 
-                    int (which state column to return,1-based indexing).  
+    .method("get_metapop_state", &Metapop::get_metapop_state, "args: \
+                    int (which state column to return,1-based indexing).  \
                     Return matrix of all cities, given state"
     )
-    .method("setpars", &Metapop::setpars, "args: 
+    .method("setpars", &Metapop::setpars, "args: \
                     list-of-list of length npop, each containing that city's parameters"
     )
     .method("steps", &Metapop::steps, "args: number of steps to advance all cities")
-    .method("init", &Metapop::init, "args:
-            initstates_ (nstate*ncity matrix of initial states), 
-            transmat    (nstate * nevent matrix, number of transitions per event for each state),
-            states_     (named list of states, values don't matter)
-            events_     (named list of events, values don't matter), 
-            accum_,     (named list as above),
-            obsall_     (bool, yes observes states and accum, )
-            nobs_       ( int, max number of observations)"
-    ) 
     ;
 }        

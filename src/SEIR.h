@@ -1,3 +1,4 @@
+#include "Events.h"
 using namespace Rcpp;
 
 class SEIR {
@@ -53,6 +54,7 @@ class SEIR {
             tmp.resize(iobs);
             return tmp;
         }
+
         
 };
 
