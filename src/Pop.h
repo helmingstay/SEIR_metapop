@@ -13,9 +13,8 @@ class Pop {
             // should states and observations be reported, or just accum variables
             obsall(as<bool>(obsall_)), 
             nobs(as<int>(nobs_)),
-            obs_nstep(as<int>(nobs_nstep_)),
-            iobs(0),
-            Pi(arma::datum::pi)
+            obs_nstep(as<int>(obs_nstep_)),
+            iobs(0)
             {
                 // !! check that all accum names are in events names
                 //
@@ -23,10 +22,11 @@ class Pop {
                 // get vectors of the names and size
                 Rcpp::List transmat_dimnames = transmat.attr("dimnames");
                 // init states and events from dimnames lists
-                states.set( transmat_dimnames[0] );
-                events.set( transmat_dimnames[1] );
-                // accum_ is handed in as a named list (SEXP)
-                accum.set( accum_ );
+                states.init_fromnames( transmat_dimnames[0] );
+                events.init_fromnames( transmat_dimnames[1] );
+                // accum_ is handed in as a character vector
+                // need to coerce to Rcpp::List??
+                accum.init_fromnames( accum_ );
                 if ( obsall ) {
                     // observe all states plus all accumulators
                     nobsvars = accum.N + states.N;
@@ -51,7 +51,7 @@ class Pop {
         bool obsall;
         unsigned int nobsvars;       // number of obsvars == number of rows in obs matrix
         unsigned int nobs;  // total number of observations, == ncol of output obs matrix
-        unsigned int nobs_nstep;  // timesteps per observations
+        unsigned int obs_nstep;  // timesteps per observations
         // replace by .N and .names, respectively
         //unsigned int nstates, nevents, naccum, nobs;
         //std::vector< std::string>  state_vars, event_vars, accum_vars;
@@ -84,9 +84,9 @@ class Pop {
             // use the names of accum list to accumulate events for each timestep
             // accum is zeroed on observation
             for (int ii = 0; ii < accum.N; ii++) {
-                std::vector myname = accum.names[ii];
+                std::string myname = accum.names[ii];
                 // e.g. latents, import, infect
-                accum[myname] += events[myname];
+                accum.add( myname, events.i(myname));
             }
         }
 
@@ -103,27 +103,28 @@ class Pop {
             std::string event_name, state_name; 
             for ( ievent = 0; ievent < events.N; ievent++) {
                 // pull out name as string for accessing lists
-                event_name = event_names[ievent];
-                for ( istate = 0; istate < states.N; istates++) {
-                    coef = as<double>( transmat( istate, ievent) );
+                event_name = events.names[ievent];
+                for ( istate = 0; istate < states.N; istate++) {
+                    coef = transmat( istate, ievent);
                     if ( coef == 0 ) continue;  // nothing to do
-                    state_name = state_names[istate];
+                    state_name = states.names[istate];
                     // update states based on the cell of the transmission matrix 
                     // times the number of events
-                    states[state_name] += coef * events[event_name];
+                    states.add(state_name, coef * events.i(event_name));
                 }
             }
             // then check for negative values
             // Throw an exception if found
             //int statemin = min(states);
-            if ( min(states) < 0) {
+            arma::colvec statevec(states.parlist);
+            if ( min(statevec) < 0) {
                 Rf_PrintValue(wrap(istep));
-                Rf_PrintValue(wrap(states.get()));
+                Rf_PrintValue(wrap(states.parlist));
                 throw_negative_state();
             }
         }
 
-        void observe() {
+        void observe(int istep) {
             if ( iobs +1 > nobs) {
                 // this should never happen, right?
                 // see above for implementing dynamic resizing
@@ -156,6 +157,14 @@ class Pop {
             END_RCPP
         }
 
+        // these should go in model!!
+        #include <algorithm>
+        int myrpois( double rate, int mymax) {
+            // rpois that returns an int no larger than second arg
+            int result = Rf_rpois( rate );
+            return std::min(result, mymax);
+        }
+            
 
         // begin model definition
         // also see prestep in Metapop
@@ -171,16 +180,8 @@ class Pop {
             // required local variables
             // these should go in model!!
             double beta_now, latent_rate, import_rate; 
-            double Pi;
+            double Pi = arma::datum::pi;
 
-            // these should go in model!!
-            #include <algorithm>
-            int myrpois( double rate, int mymax) {
-                // rpois that returns an int no larger than second arg
-                int result = Rf_rpois( rate );
-                return std::min(result, mymax);
-            }
-                
                 ////////////////////////////
                 // many in-place, sequential, possible modifications of beta
                 /////////////////////////
@@ -204,12 +205,12 @@ class Pop {
                 //
                 // multiple ways to do latent/imports...??
                 // everyone gets the same internal dynamics
-                latent_rate = (beta_now*states["S"]*states["I"])/states["N"]; 
+                latent_rate = (beta_now*states.i("S")*states.i("I"))/states.i("N"); 
                 if (pars.d("imports")== 0 ) {
                     // Metapop!
                     // Ieff is scaled for N at metapop level
                     // changed so self-connect == 0
-                    import_rate = beta_now*states["S"]*states["Ieff"]; 
+                    import_rate = beta_now*states.i("S")*states.i("Ieff"); 
                 } else {
                     // manual imports, multiply by S at the end
                     switch ( pars.i("importmethod")) {
@@ -256,27 +257,27 @@ class Pop {
                                 break;
                     } // end switch
                     // multiply imports by S at the end
-                    import_rate *= states["S"];
+                    import_rate *= states.i("S");
                 };
 
 
             // done with prep, now compute events 
-            events["birth"] = myrpois( states["N"] * pars.d("birth"), states["N"]) ;
+            events.parlist["birth"] = myrpois( states.i("N") * pars.d("birth"), states.i("N")) ;
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
-                events["imports"] = Rf_rpois( import_rate );
+                events.parlist["imports"] = Rf_rpois( import_rate );
             };
-            events["latent"] = myrpois( latent_rate, states["S"] + events["birth"]);
-            events["infect"] = myrpois( pars.d("sigma") * states["E"], states["E"] + events["latent"]);
-            events["recover"] = myrpois( pars.d("gamma") * states["I"], states["I"] + events["infect"]);
+            events.parlist["latent"] = myrpois( latent_rate, states.i("S") + events.i("birth"));
+            events.parlist["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E") + events.i("latent"));
+            events.parlist["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I") + events.i("infect"));
             if ( pars.d("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events["deltaR"] = myrpois( states["N"]* fabs(pars.d("deltaR")), states["R"]); 
+                events.parlist["deltaR"] = myrpois( states.i("N")* fabs(pars.d("deltaR")), states.i("R")); 
                 // then set negative
-                events["deltaR"] *= -1;
+                events.parlist["deltaR"] = events.i("deltaR") * -1;
             } else {
                 // otherwise we're adding
-                events["deltaR"] = Rf_rpois( states["N"]* fabs(pars.d("deltaR"))); 
+                events.parlist["deltaR"] = Rf_rpois( states.i("N")* fabs(pars.d("deltaR"))); 
             };
         };
 

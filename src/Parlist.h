@@ -13,6 +13,14 @@ class Parlist {
             return as<double>(parlist[varname]);
         };
 
+        double add(std::string varname, double val){
+            parlist[varname] = parlist[varname] + val;
+        };
+
+        //Rcpp::List& operator()( std::string name ){
+            //return parlist[name];
+        //}
+
         void set(Rcpp::List newlist){
             // initialize elements from a named input list with values
             parlist = newlist;
@@ -37,13 +45,13 @@ class Parlist {
             // called from C++ Events
             names = mk_names(nameslist);
             parlist = mk_list(names);
-            N = parlist.size()
+            N = parlist.size();
             // fill with zeros 
             fill(0);
         }
 
         void fill( double val) {
-            fill( parlist.begin(), parlist.end(), val);
+            std::fill( parlist.begin(), parlist.end(), val);
         }
 
         void copy( NumericVector vals ) {
