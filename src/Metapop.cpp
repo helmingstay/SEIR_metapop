@@ -128,7 +128,8 @@ RCPP_MODULE(seirmod){
                 accum_,     (character vector naming events to accumulate, must be contained in colnames of transmat),\
                 obsall_     (bool, yes observes states and accum), \
                 nobs_       ( int, max number of observations), \
-                obs_nstep (number of steps per observation)\
+                obs_nstep (number of steps per observation), \
+                deltat (timestep, implement!! ), \
             }" 
     )
     .method("get_metapop_state", &Metapop::get_metapop_state, "args: \
