@@ -6,12 +6,13 @@ using namespace Rcpp;
 
 class Metapop { 
     public:
-        Metapop(SEXP npop_, SEXP xymat_, SEXP couplemat_, SEXP initstates_,
-                SEXP transmat_, SEXP accum_, SEXP obsall_, SEXP nobs_,  SEXP obs_nstep_ ) : 
-           npop(as<unsigned int>(npop_)), xymat(xymat_), couplemat(couplemat_), istep(0)
+        Metapop(SEXP npop_, SEXP metapars_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
+           npop(as<unsigned int>(npop_)), istep(0), metapars()
         {
+            // any parameters required by the metapop model spec (passed to prestep, poststep)
+            metapars.set(metapars_);
             // initialize a single population
-            Pop tmppop( transmat_, accum_, obsall_, nobs_, obs_nstep_);
+            Pop tmppop( transmat_, poplist_);
             // then make a vector of them
             pops = std::vector<Pop>(npop, tmppop);
             // check that nrow xymat == npop!!??
@@ -66,13 +67,16 @@ class Metapop {
         }
 
     private:
+        // does parlist need to change in-flight? 
+        Parlist metapars;
         unsigned int npop;
         std::vector<Pop> pops;
-        NumericMatrix xymat;  //distance matrix between cities
-        NumericMatrix couplemat;  //metapop coupling matrix between cities
         int istep; // index of current step, separate from iobs
 
         void prestep(){
+            // access matrices via metapars
+            // NumericMatrix xymat;  //distance matrix between cities
+            // NumericMatrix couplemat;  //metapop coupling matrix between cities
             // FIXME!!
             // functions that need to be completed outside of individual pops
             // pre-intrapop step
@@ -110,16 +114,22 @@ class Metapop {
 RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
     class_<Metapop>("Metapop")
-    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP >("args: \
+    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP>("args: \
             npop (int, number of cities), \
-            xymat (npop*2 matrix of city locations, currently unused), \
-            couplemat (between-city coupling matrix), \
+            metapars (list of parameters required by metapop model, might contain for example): \
+            {\
+                xymat (npop*2 matrix of city locations, currently unused), \
+                couplemat (between-city coupling matrix), \
+            }, \
             initstates_ (nstate*ncity matrix of initial states), \
             transmat_    (nstate * nevent matrix, number of transitions per event for each state),\
-            accum_,     (character vector naming events to accumulate, must be contained in colnames of transmat),\
-            obsall_     (bool, yes observes states and accum), \
-            nobs_       ( int, max number of observations), \
-            obs_nstep (number of steps per observation)" 
+            poplist_ (list containing the following elements):\
+            {\
+                accum_,     (character vector naming events to accumulate, must be contained in colnames of transmat),\
+                obsall_     (bool, yes observes states and accum), \
+                nobs_       ( int, max number of observations), \
+                obs_nstep (number of steps per observation)\
+            }" 
     )
     .method("get_metapop_state", &Metapop::get_metapop_state, "args: \
                     int (which state column to return,1-based indexing).  \

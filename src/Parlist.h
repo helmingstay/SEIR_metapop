@@ -7,27 +7,27 @@ class Parlist {
             //{}
         int i(std::string varname){
             // get parameter list element named varname, return as int
-            return as<int>(parlist[varname]);
+            return as<int>(list[varname]);
         };
         double d(std::string varname){
-            return as<double>(parlist[varname]);
+            return as<double>(list[varname]);
         };
 
         double add(std::string varname, double val){
-            parlist[varname] = parlist[varname] + val;
+            list[varname] = list[varname] + val;
         };
 
         //Rcpp::List& operator()( std::string name ){
-            //return parlist[name];
+            //return list[name];
         //}
 
         void set(Rcpp::List newlist){
             // initialize elements from a named input list with values
-            parlist = newlist;
-            N = parlist.size();
-            names = mk_names( parlist.attr("names") );
+            list = newlist;
+            N = list.size();
+            names = mk_names( list.attr("names") );
             if (N != names.size()) {
-                Rf_PrintValue(parlist);
+                Rf_PrintValue(list);
                 throw std::range_error("Error in Parlist.set: newlist must have names");
             }
         }
@@ -44,30 +44,30 @@ class Parlist {
             // init from a list of names, fill with zeros (as doubles)
             // called from C++ Events
             names = mk_names(nameslist);
-            parlist = mk_list(names);
-            N = parlist.size();
+            list = mk_list(names);
+            N = list.size();
             // fill with zeros 
             fill(0);
         }
 
         void fill( double val) {
-            std::fill( parlist.begin(), parlist.end(), val);
+            std::fill( list.begin(), list.end(), val);
         }
 
         void copy( NumericVector vals ) {
-            if (parlist.size() != vals.size()) {
-                Rf_PrintValue(parlist);
+            if (list.size() != vals.size()) {
+                Rf_PrintValue(list);
                 Rf_PrintValue(vals);
-                throw std::range_error("Error in Parlist.copy: new values must have same dim as parlist");
+                throw std::range_error("Error in Parlist.copy: new values must have same dim as list");
             }
-            std::copy(vals.begin(), vals.end(), parlist.begin());
+            std::copy(vals.begin(), vals.end(), list.begin());
         }
 
     public:
         // variables
         int N;
         std::vector< std::string> names;
-        Rcpp::List parlist;
+        Rcpp::List list;
 
     private:
         // convenience functions

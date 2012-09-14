@@ -2,7 +2,7 @@ using namespace Rcpp;
 
 class Pop {
     public:
-        Pop( SEXP transmat_, SEXP accum_, SEXP obsall_, SEXP nobs_, SEXP obs_nstep_):
+        Pop( SEXP transmat_, SEXP poplist_):
             // prep states, events, and accum as named lists in R
             // events are cols, states are rows
             transmat(transmat),
@@ -10,12 +10,19 @@ class Pop {
             accum(), 
             // these are set from transmat dimnames
             states(), events(),
-            // should states and observations be reported, or just accum variables
-            obsall(as<bool>(obsall_)), 
-            nobs(as<int>(nobs_)),
-            obs_nstep(as<int>(obs_nstep_)),
             iobs(0)
             {
+                // list containing requisite elements for pop, can only pass 6 args to constructor
+                // do error-checking in R to make sure we have all of: {obsall, nobs, obs_nstep, accum}
+                Rcpp::List poplist(poplist_);
+                // should states and observations be reported, or just accum variables
+                obsall = as<bool>(poplist["obsall"]);
+                nobs = as<int>(poplist["nobs"]);
+                obs_nstep = as<int>(poplist["obs_nstep"]);
+                Rcpp::List accum_ = poplist["accum"];
+                // accum_ is handed in as a character vector
+                // need to coerce to Rcpp::List??
+                accum.init_fromnames( accum_ );
                 // !! check that all accum names are in events names
                 //
                 // pull out row and column names from transmat,
@@ -24,9 +31,6 @@ class Pop {
                 // init states and events from dimnames lists
                 states.init_fromnames( transmat_dimnames[0] );
                 events.init_fromnames( transmat_dimnames[1] );
-                // accum_ is handed in as a character vector
-                // need to coerce to Rcpp::List??
-                accum.init_fromnames( accum_ );
                 if ( obsall ) {
                     // observe all states plus all accumulators
                     nobsvars = accum.N + states.N;
@@ -116,30 +120,36 @@ class Pop {
             // then check for negative values
             // Throw an exception if found
             //int statemin = min(states);
-            arma::colvec statevec(states.parlist);
+            NumericVector tmpvec(states.list);
+            arma::colvec statevec(tmpvec);
+            //std::copy(states.list.begin(), states.list.end(), statevec.begin());
             if ( min(statevec) < 0) {
                 Rf_PrintValue(wrap(istep));
-                Rf_PrintValue(wrap(states.parlist));
+                Rf_PrintValue(wrap(states.list));
                 throw_negative_state();
             }
         }
 
         void observe(int istep) {
+            arma::colvec ret( nobsvars );
+            // give the compiler enough info
+            NumericVector tmpaccum(accum.list);
             if ( iobs +1 > nobs) {
                 // this should never happen, right?
                 // see above for implementing dynamic resizing
                 throw std::range_error("took too many observations");
             }
             if (obsall) {
+                // for the compiler
+                NumericVector tmpstates(states.list);
                 // copy both accum and states into result
-                arma::colvec ret( nobsvars );
-                std::copy(accum.parlist.begin(), accum.parlist.end(), ret.begin());
-                std::copy(states.parlist.begin(), states.parlist.end(), ret.begin()+accum.N);
+                std::copy(tmpaccum.begin(), tmpaccum.end(), ret.begin());
+                std::copy(tmpstates.begin(), tmpstates.end(), ret.begin()+accum.N);
             } else {
                 // otherwise only return accumulated
-                arma::colvec ret = as<arma::colvec>(accum.parlist);
+                ret = as<arma::colvec>(tmpaccum);
                 //arma::colvec ret( accum.N );
-                //std::copy(accum.parlist.begin(), accum.parlist.end(), ret.begin());
+                //std::copy(accum.list.begin(), accum.list.end(), ret.begin());
             }
             // reset the accumulated 
             accum.fill(0);
@@ -262,22 +272,30 @@ class Pop {
 
 
             // done with prep, now compute events 
-            events.parlist["birth"] = myrpois( states.i("N") * pars.d("birth"), states.i("N")) ;
+            // why N??
+            //events.list["birth"] = myrpois( states.i("N") * pars.d("birth"), states.i("N")) ;
+            events.list["birth"] = Rf_rpois( states.i("N") * pars.d("birth")) ;
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
-                events.parlist["imports"] = Rf_rpois( import_rate );
+                events.list["imports"] = Rf_rpois( import_rate );
             };
-            events.parlist["latent"] = myrpois( latent_rate, states.i("S") + events.i("birth"));
-            events.parlist["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E") + events.i("latent"));
-            events.parlist["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I") + events.i("infect"));
+            // Should current events be included in ceiling?
+            //events.list["latent"] = myrpois( latent_rate, states.i("S") + events.i("birth"));
+            //events.list["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E") + events.i("latent"));
+            //events.list["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I") + events.i("infect"));
+            //  
+            //  This formulation is order-independent
+            events.list["latent"] = myrpois( latent_rate, states.i("S"));
+            events.list["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E"));
+            events.list["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I"));
             if ( pars.d("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events.parlist["deltaR"] = myrpois( states.i("N")* fabs(pars.d("deltaR")), states.i("R")); 
+                events.list["deltaR"] = myrpois( states.i("N")* fabs(pars.d("deltaR")), states.i("R")); 
                 // then set negative
-                events.parlist["deltaR"] = events.i("deltaR") * -1;
+                events.list["deltaR"] = events.i("deltaR") * -1;
             } else {
                 // otherwise we're adding
-                events.parlist["deltaR"] = Rf_rpois( states.i("N")* fabs(pars.d("deltaR"))); 
+                events.list["deltaR"] = Rf_rpois( states.i("N")* fabs(pars.d("deltaR"))); 
             };
         };
 
