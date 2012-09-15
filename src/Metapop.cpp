@@ -6,11 +6,9 @@ using namespace Rcpp;
 
 class Metapop { 
     public:
-        Metapop(SEXP npop_, SEXP metapars_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
-           npop(as<unsigned int>(npop_)), istep(0), metapars()
+        Metapop(SEXP npop_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
+           npop(as<unsigned int>(npop_)), istep(0), metapars(), ready(false)
         {
-            // any parameters required by the metapop model spec (passed to prestep, poststep)
-            metapars.set(metapars_);
             // initialize a single population
             Pop tmppop( transmat_, poplist_);
             // then make a vector of them
@@ -41,10 +39,11 @@ class Metapop {
             return wrap(ret);
         } 
 
-        SEXP setpars( SEXP pars) {
+        SEXP setpars( SEXP metapars_, SEXP pars_) {
+            metapars.set(metapars_);
             // Takes a list of lists, each sublist contains that city's parlist
             // Loop through and set for each pop
-            Rcpp::List tmppars(pars);
+            Rcpp::List tmppars(pars_);
             BEGIN_RCPP
             if ( tmppars.size() != npop)  {
                 throw std::range_error(" the paramater list of lists should have npop elements");
@@ -54,9 +53,13 @@ class Metapop {
                pops[ii].pars.set( thispars ) ;
             } 
             END_RCPP
+            ready = true;
         }
 
         void steps( int n ) {
+            if (!ready) {
+                throw std::runtime_error("Tried to run model before parameter initialization");
+            }
             // advance the model forward n steps
             RNGScope scope; // when to call this??
             for (int ii = 0; ii<n; ii++) {
@@ -72,6 +75,7 @@ class Metapop {
         unsigned int npop;
         std::vector<Pop> pops;
         int istep; // index of current step, separate from iobs
+        bool ready;  // toogle this to true once pars have been set
 
         void prestep(){
             // access matrices via metapars
@@ -114,7 +118,7 @@ class Metapop {
 RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
     class_<Metapop>("Metapop")
-    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP>("args: \
+    .constructor<SEXP, SEXP, SEXP, SEXP>("args: \
             npop (int, number of cities), \
             metapars (list of parameters required by metapop model, might contain for example): \
             {\
@@ -137,7 +141,10 @@ RCPP_MODULE(seirmod){
                     Return matrix of all cities, given state"
     )
     .method("setpars", &Metapop::setpars, "args: \
-                    list-of-list of length npop, each containing that city's parameters"
+                    two lists:  \
+            * first, list of metapop pars   \
+            * 2nd:  list-of-list of length npop, each containing that city's parameters\
+            NOTE this must be run before model steps can be taken"
     )
     .method("steps", &Metapop::steps, "args: number of steps to advance all cities")
     ;
