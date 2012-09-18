@@ -39,8 +39,7 @@ class Parlist {
             set(newlist);
         }
 
-        void init_fromnames( Rcpp::List nameslist) {
-            // needed??
+        void init_fromnames( CharacterVector nameslist) {
             // init from a list of names, fill with zeros (as doubles)
             // called from C++ Events
             names = mk_names(nameslist);
@@ -49,7 +48,6 @@ class Parlist {
             // fill with zeros 
             fill(0);
         }
-
         void fill( double val) {
             std::fill( list.begin(), list.end(), val);
         }
@@ -70,12 +68,13 @@ class Parlist {
         Rcpp::List list;
 
     private:
-        // convenience functions
-        std::vector< std::string> mk_names( Rcpp::List names_list ) {
+
+        std::vector< std::string> mk_names( CharacterVector names_list ) {
             // function to turn list of names (from attributes) into vector suitable for list indexing
             std::vector< std::string> ret = Rcpp::as< std::vector< std::string> >(names_list);
             return ret;
         }
+
         Rcpp::List mk_list( std::vector< std::string> list_names ) {
             // function to turn named list from vector of names
             // initialize list by size

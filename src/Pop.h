@@ -5,9 +5,10 @@ class Pop {
         Pop( SEXP transmat_, SEXP poplist_):
             // prep states, events, and accum as named lists in R
             // events are cols, states are rows
-            transmat(transmat),
+            transmat(transmat_),
             //named list, naming variables to accumulate
             accum(), 
+            pars(),
             // these are set from transmat dimnames
             states(), events(),
             iobs(0)
@@ -19,18 +20,20 @@ class Pop {
                 obsall = as<bool>(poplist["obsall"]);
                 nobs = as<int>(poplist["nobs"]);
                 obs_nstep = as<int>(poplist["obs_nstep"]);
-                Rcpp::List accum_ = poplist["accum"];
-                // accum_ is handed in as a character vector
-                // need to coerce to Rcpp::List??
-                accum.init_fromnames( accum_ );
                 // !! check that all accum names are in events names
                 //
                 // pull out row and column names from transmat,
                 // get vectors of the names and size
                 Rcpp::List transmat_dimnames = transmat.attr("dimnames");
                 // init states and events from dimnames lists
-                states.init_fromnames( transmat_dimnames[0] );
-                events.init_fromnames( transmat_dimnames[1] );
+                CharacterVector tmprows = transmat_dimnames[0];
+                CharacterVector tmpcols = transmat_dimnames[1];
+                states.init_fromnames( tmprows );
+                events.init_fromnames( tmpcols );
+                // accum_ is handed in as a character vector
+                // need to coerce to Rcpp::List??
+                CharacterVector accum_ = poplist["accum"];
+                accum.init_fromnames( accum_ );
                 if ( obsall ) {
                     // observe all states plus all accumulators
                     nobsvars = accum.N + states.N;
