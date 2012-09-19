@@ -67,16 +67,22 @@ class Pop {
     public:
         // making the Parlists public exposes their methods to metapop
          // keeping them private may be cleaner, but requires a lot of overhead to set each individually
-        Parlist pars, states, events, accum; 
-
+        Parlist<double> pars; 
+        Parlist<int> states, events, accum; // should be unsigned??
 
         void step(int istep) {
+            
+                Rf_PrintValue(wrap(4));
            calcEvents(istep); 
+                Rf_PrintValue(wrap("a"));
            accumEvents(istep);
+                Rf_PrintValue(wrap("b"));
            updateStates(istep);
+                Rf_PrintValue(wrap(7));
            if ( istep % obs_nstep == 1 ) {
                observe(istep);
            }
+                Rf_PrintValue(wrap(8));
         }
 
         arma::colvec getstate(int whichstate) {
@@ -93,7 +99,7 @@ class Pop {
             for (int ii = 0; ii < accum.N; ii++) {
                 std::string myname = accum.names[ii];
                 // e.g. latents, import, infect
-                accum.add( myname, events.i(myname));
+                accum.add( myname, events(myname));
             }
         }
 
@@ -108,29 +114,35 @@ class Pop {
             double coef;
             // names for list access
             std::string event_name, state_name; 
+                Rf_PrintValue(wrap(0));
             for ( ievent = 0; ievent < events.N; ievent++) {
                 // pull out name as string for accessing lists
                 event_name = events.names[ievent];
+                    
+                Rf_PrintValue(wrap(event_name));
                 for ( istate = 0; istate < states.N; istate++) {
                     coef = transmat( istate, ievent);
                     if ( coef == 0 ) continue;  // nothing to do
                     state_name = states.names[istate];
+                Rf_PrintValue(wrap(state_name));
                     // update states based on the cell of the transmission matrix 
                     // times the number of events
-                    states.add(state_name, coef * events.i(event_name));
+                    states.add(state_name, coef * events(event_name));
                 }
             }
             // then check for negative values
             // Throw an exception if found
             //int statemin = min(states);
-            NumericVector tmpvec(states.list);
-            arma::colvec statevec(tmpvec);
+            Rf_PrintValue(wrap(21));
+            int min_elem = *(std::min_element(states.list.begin(), states.list.end()));
+            Rf_PrintValue(wrap(23));
             //std::copy(states.list.begin(), states.list.end(), statevec.begin());
-            if ( min(statevec) < 0) {
+            if ( min_elem < 0) {
                 Rf_PrintValue(wrap(istep));
                 Rf_PrintValue(wrap(states.list));
                 throw_negative_state();
             }
+            Rf_PrintValue(wrap(24));
         }
 
         void observe(int istep) {
@@ -198,19 +210,21 @@ class Pop {
                 ////////////////////////////
                 // many in-place, sequential, possible modifications of beta
                 /////////////////////////
-                if (pars.i("schooltype") == 0) {
-                    beta_now = pars.d("R0") * pars.d("gamma"); 
+                Rf_PrintValue(wrap(3));
+                if (pars("schooltype") == 0) {
+                    beta_now = pars("R0") * pars("gamma"); 
                     //sin forcing
                     beta_now = 
-                      pars.d("R0") * pars.d("gamma") * 
-                      ( 1.0-pars.d("betaforce")* cos(2.0*Pi*(istep-pars.i("schoollag"))/365.0));
+                      pars("R0") * pars("gamma") * 
+                      ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
                 };
+                Rf_PrintValue(wrap(3));
                 //// checkme!!
-                //if (pars.i("schooltype")== 1) {
+                //if (pars("schooltype")== 1) {
                     //termtime forcing, schoold scedule passed in as vector of 0/1??
                     // add 365 to ensure doy is always positive
-                    //int doy = (istep-pars.i("schoollag")+365) % 365;
-                    //beta_now = pars.d("beta0")*pow(1.0+pars.d("betaforce"), pars.NV("schooldays")( doy ));
+                    //int doy = (istep-pars("schoollag")+365) % 365;
+                    //beta_now = pars("beta0")*pow(1.0+pars("betaforce"), pars.NV("schooldays")( doy ));
                 //};
                 //
                 //
@@ -218,15 +232,18 @@ class Pop {
                 //
                 // multiple ways to do latent/imports...??
                 // everyone gets the same internal dynamics
-                latent_rate = (beta_now*states.i("S")*states.i("I"))/states.i("N"); 
-                if (pars.d("imports")== 0 ) {
+                Rf_PrintValue(wrap(5));
+                latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
+                Rf_PrintValue(wrap(6));
+                if (pars("imports")== 0 ) {
                     // Metapop!
                     // Ieff is scaled for N at metapop level
                     // changed so self-connect == 0
-                    import_rate = beta_now*states.i("S")*states.i("Ieff"); 
+                    import_rate = beta_now*states("S")*states("Ieff"); // is Ieff implemented yet??
                 } else {
+                    Rf_PrintValue(wrap(7));
                     // manual imports, multiply by S at the end
-                    switch ( pars.i("importmethod")) {
+                    switch ( static_cast<int>(pars("importmethod"))) {
                         case 0:
                             // no imports
                             import_rate = 0;
@@ -234,8 +251,9 @@ class Pop {
                         // no connection, all are *S
                         // try 0, 
                         case 1:
+                            Rf_PrintValue(wrap(8));
                             // constant random imports, no influence of pop 
-                            import_rate = pars.d("imports");
+                            import_rate = pars("imports");
                             //if (0) {
                                 // example of how to print conditional debugging information
                                 // make a list, add desired elements, and then print
@@ -252,54 +270,61 @@ class Pop {
                             //  like 2, only moved N inside
                             //  pulsed inmports, no pop 
                             // divide rimports by rbeta0 so comparable between all
-                            import_rate = beta_now*(pars.d("imports")/pars.d("beta0"));
+                            import_rate = beta_now*(pars("imports")/pars("beta0"));
                             break;
                         // implement
                         //case 3:
                             // constant random imports proportional/modified by to pop
-                            // import_rate  = (pars.i("imports")*pow(states["N"], pars.d("import_power")))/states["N"];
+                            // import_rate  = (pars("imports")*pow(states["N"], pars("import_power")))/states["N"];
                          //   break;
                         //case 4:
                             // pulsed random imports proportional/modified by to pop
                             //import_rate = (beta_now*(states["I"]+ 
-                            //              ((pars.i("imports")/pars.i("beta0"))
-                            //                  * pow(states["N"], pars.d("import_power")))))/states["N"]; 
+                            //              ((pars("imports")/pars("beta0"))
+                            //                  * pow(states["N"], pars("import_power")))))/states["N"]; 
                             //break;
                         default:
                             throw std::range_error("importmethod not implemented");
                                 break;
                     } // end switch
                     // multiply imports by S at the end
-                    import_rate *= states.i("S");
+                        Rf_PrintValue(wrap(9));
+                    import_rate *= states("S");
                 };
 
 
             // done with prep, now compute events 
             // why N??
-            //events.list["birth"] = myrpois( states.i("N") * pars.d("birth"), states.i("N")) ;
-            events.list["birth"] = Rf_rpois( states.i("N") * pars.d("birth")) ;
+            //events.list["birth"] = myrpois( states("N") * pars("birth"), states("N")) ;
+            Rf_PrintValue(wrap(10));
+            events.list["birth"] = Rf_rpois( states("N") * pars("birth")) ;
+            Rf_PrintValue(wrap(11));
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
                 events.list["imports"] = Rf_rpois( import_rate );
             };
+            Rf_PrintValue(wrap(3));
             // Should current events be included in ceiling?
-            //events.list["latent"] = myrpois( latent_rate, states.i("S") + events.i("birth"));
-            //events.list["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E") + events.i("latent"));
-            //events.list["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I") + events.i("infect"));
+            //events.list["latent"] = myrpois( latent_rate, states("S") + events("birth"));
+            //events.list["infect"] = myrpois( pars("sigma") * states("E"), states("E") + events("latent"));
+            //events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I") + events("infect"));
             //  
             //  This formulation is order-independent
-            events.list["latent"] = myrpois( latent_rate, states.i("S"));
-            events.list["infect"] = myrpois( pars.d("sigma") * states.i("E"), states.i("E"));
-            events.list["recover"] = myrpois( pars.d("gamma") * states.i("I"), states.i("I"));
-            if ( pars.d("deltaR")< 0 ) { 
+                Rf_PrintValue(wrap(3));
+            events.list["latent"] = myrpois( latent_rate, states("S"));
+            events.list["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
+            events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
+                Rf_PrintValue(wrap(3));
+            if ( pars("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events.list["deltaR"] = myrpois( states.i("N")* fabs(pars.d("deltaR")), states.i("R")); 
+                events.list["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
                 // then set negative
-                events.list["deltaR"] = events.i("deltaR") * -1;
+                events.list["deltaR"] = events("deltaR") * -1;
             } else {
                 // otherwise we're adding
-                events.list["deltaR"] = Rf_rpois( states.i("N")* fabs(pars.d("deltaR"))); 
+                events.list["deltaR"] = Rf_rpois( states("N")* fabs(pars("deltaR"))); 
             };
+                Rf_PrintValue(wrap(3));
         };
 
 

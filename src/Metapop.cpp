@@ -4,6 +4,8 @@
 #include "Pop.h"
 
 
+
+
 using namespace Rcpp; 
 
 class Metapop { 
@@ -27,7 +29,6 @@ class Metapop {
                 pops[ii].states.copy( tmpinit);
             };
         };
-
 
         NumericMatrix get_metapop_state(int n) { 
             // takes R-style 1-based index of state to retrieve
@@ -54,16 +55,19 @@ class Metapop {
                Rcpp::List thispars = tmppars(ii);
                pops[ii].pars.set( thispars ) ;
             } 
-            END_RCPP
             ready = true;
+            END_RCPP
         }
 
         void steps( int n ) {
+            Rf_PrintValue(wrap(1));
             if (!ready) {
                 throw std::runtime_error("Tried to run model before parameter initialization");
             }
             // advance the model forward n steps
+            Rf_PrintValue(wrap(2));
             RNGScope scope; // when to call this??
+            Rf_PrintValue(wrap(3));
             for (int ii = 0; ii<n; ii++) {
                 prestep();
                 step();
@@ -73,7 +77,7 @@ class Metapop {
 
     private:
         // does parlist need to change in-flight? 
-        Parlist metapars;
+        Parlist<double> metapars;
         unsigned int npop;
         std::vector<Pop> pops;
         int istep; // index of current step, separate from iobs
@@ -110,11 +114,27 @@ class Metapop {
         void step( ) {
             //  intra-population functions
             // take the next step for each pop
+            Rf_PrintValue(wrap(1));
             for ( int ithis = 0; ithis < npop; ithis++) {
+                Rf_PrintValue(wrap(2));
                pops[ithis].step(istep);
+                Rf_PrintValue(wrap(3));
             } 
+            istep++;
         }
 };
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 RCPP_MODULE(seirmod){

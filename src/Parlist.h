@@ -1,19 +1,17 @@
 using namespace Rcpp;
 
+template <typename T>
 class Parlist {
     public:
         //Parlist():
             // check that list is initialized before accessing??
             //{}
-        int i(std::string varname){
+        T operator()(const std::string varname){
             // get parameter list element named varname, return as int
-            return as<int>(list[varname]);
-        };
-        double d(std::string varname){
-            return as<double>(list[varname]);
+            return as<T>(list[varname]);
         };
 
-        double add(std::string varname, double val){
+        double add(std::string varname, T val){
             list[varname] = list[varname] + val;
         };
 
@@ -48,7 +46,7 @@ class Parlist {
             // fill with zeros 
             fill(0);
         }
-        void fill( double val) {
+        void fill( T val) {
             std::fill( list.begin(), list.end(), val);
         }
 
