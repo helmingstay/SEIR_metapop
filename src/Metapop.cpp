@@ -108,10 +108,6 @@ class Metapop {
             // stub of anything that needs to be completed outside of individual pops
         };
       
-
-
-
-
         void step( ) {
             //  intra-population functions
             // take the next step for each pop

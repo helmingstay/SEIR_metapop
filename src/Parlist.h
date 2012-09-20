@@ -6,14 +6,14 @@ class Parlist {
         //Parlist():
             // check that list is initialized before accessing??
             //{}
-        T operator()(const std::string varname){
+        &T operator()(const std::string varname){
             // get parameter list element named varname, return as int
-            return as<T>(list[varname]);
+            &list[varname];
         };
 
         void add(std::string varname, T val){
             // use the operator() to do the cast when getting the value
-            list[varname] = (*this)(varname) + val;
+            list[varname] = list[varname] + val;
         };
 
         //Rcpp::List& operator()( std::string name ){
@@ -81,7 +81,7 @@ class Parlist {
         int N;
         std::vector< std::string> names;
         Rcpp::List list;
-    //map<std::string, T> list;
+        map<std::string, T> list;
 
     private:
 
@@ -91,12 +91,14 @@ class Parlist {
             return ret;
         }
 
-        Rcpp::List mk_list( std::vector< std::string> list_names ) {
+        map<std::string, T> list mk_list( std::vector< std::string> list_names ) {
             // function to turn named list from vector of names
             // initialize list by size
-            Rcpp::List ret( list_names.size() );
-            // set names
-            ret.attr("names") = list_names;
+            //std::string thisname;
+            map<std::string, T> ret;
+            for( int ii = list_names.size(); ii>0; ii--){
+              ret[ list_names[ii] ] = 0;
+            }
             return ret;
         }
 
