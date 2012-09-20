@@ -1,10 +1,11 @@
 ## test code
-## 10 pops, 4 states
 
+ncity <- 50
 eventnames <- c("birth", "latent", "infect", "recover", "deltaR"); 
 statenames <- c("S", "E", "I", "R", "N")
-initstate = c(S=5e5, E=0, I=0, R=5e5, N=1e6)
-initstates <- matrix(initstate, nrow=length(statenames), ncol=10)
+initstate = c(S=1e5, E=0, I=1, R=5e5)
+initstate['N'] = sum(initstate)
+initstates <- matrix(initstate, nrow=length(statenames), ncol=ncity)
 transmat <- matrix(0, nrow=length(statenames), ncol=length(eventnames)); 
 rownames(transmat) <- rownames(initstates) <- statenames
 colnames(transmat) <- eventnames
@@ -18,14 +19,14 @@ transmat["R", "recover"] = 1
 transmat["R", "deltaR"] = 1
 
 accumvars = c("latent", "infect")
-obsall = TRUE
-nobs = 365*50
+obsall = F
+nobs = 365*30
 obs_nstep = 7
 deltat = 1/365
 
 mymod <- newModel(initstates, transmat, accumvars, obsall, nobs, obs_nstep, deltat)
 
-modlist <- lapply( 1:ncol(initstates), function(x) list( R0=16,
+modlist <- lapply( 1:ncity, function(x) list( R0=16,
                     probs=0, distmethod=c('null'),
                     betaforce=0.25,
                     imports=10^-5.5, schoollag=0,
@@ -37,4 +38,7 @@ modlist <- lapply( 1:ncol(initstates), function(x) list( R0=16,
 ))
 
 mymod$setpars(list(dummy=1), modlist)
- mymod$steps(7)
+
+ps(mymod$steps(10*365))
+#aa <- lapply(1:7, function(x) mymod$get_metapop_state( x));
+# mymod$steps(nobs-365)

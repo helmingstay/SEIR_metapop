@@ -72,17 +72,12 @@ class Pop {
 
         void step(int istep) {
             
-                Rf_PrintValue(wrap(4));
            calcEvents(istep); 
-                Rf_PrintValue(wrap("a"));
            accumEvents(istep);
-                Rf_PrintValue(wrap("b"));
            updateStates(istep);
-                Rf_PrintValue(wrap(7));
            if ( istep % obs_nstep == 1 ) {
                observe(istep);
            }
-                Rf_PrintValue(wrap(8));
         }
 
         arma::colvec getstate(int whichstate) {
@@ -110,61 +105,56 @@ class Pop {
             // index vars
             int ievent, istate;
             // coefficient telling state delta resulting from events
-            // would this ever be non-integer??
-            double coef;
+            int coef;
             // names for list access
             std::string event_name, state_name; 
-                Rf_PrintValue(wrap(0));
+            //Rf_PrintValue(wrap(istep));
+            //Rf_PrintValue(wrap("before"));
+            //Rf_PrintValue(events.list);
+            //Rf_PrintValue(states.list);
             for ( ievent = 0; ievent < events.N; ievent++) {
                 // pull out name as string for accessing lists
                 event_name = events.names[ievent];
                     
-                Rf_PrintValue(wrap(event_name));
                 for ( istate = 0; istate < states.N; istate++) {
                     coef = transmat( istate, ievent);
                     if ( coef == 0 ) continue;  // nothing to do
                     state_name = states.names[istate];
-                Rf_PrintValue(wrap(state_name));
                     // update states based on the cell of the transmission matrix 
                     // times the number of events
                     states.add(state_name, coef * events(event_name));
                 }
             }
+            //Rf_PrintValue(wrap("after"));
+            //Rf_PrintValue(states.list);
             // then check for negative values
             // Throw an exception if found
             //int statemin = min(states);
-            Rf_PrintValue(wrap(21));
-            int min_elem = *(std::min_element(states.list.begin(), states.list.end()));
-            Rf_PrintValue(wrap(23));
+            int min_elem = states.min();
             //std::copy(states.list.begin(), states.list.end(), statevec.begin());
             if ( min_elem < 0) {
                 Rf_PrintValue(wrap(istep));
                 Rf_PrintValue(wrap(states.list));
                 throw_negative_state();
             }
-            Rf_PrintValue(wrap(24));
         }
 
         void observe(int istep) {
             arma::colvec ret( nobsvars );
-            // give the compiler enough info
-            NumericVector tmpaccum(accum.list);
             if ( iobs +1 > nobs) {
                 // this should never happen, right?
                 // see above for implementing dynamic resizing
                 throw std::range_error("took too many observations");
             }
             if (obsall) {
-                // for the compiler
-                NumericVector tmpstates(states.list);
-                // copy both accum and states into result
-                std::copy(tmpaccum.begin(), tmpaccum.end(), ret.begin());
-                std::copy(tmpstates.begin(), tmpstates.end(), ret.begin()+accum.N);
+                // copy both accum and states
+                arma::colvec accumvec = accum.get_colvec();
+                arma::colvec statesvec = states.get_colvec();
+                std::copy(accumvec.begin(), accumvec.end(), ret.begin());
+                // also copy states
+                std::copy(statesvec.begin(), statesvec.end(), ret.begin()+accum.N);
             } else {
-                // otherwise only return accumulated
-                ret = as<arma::colvec>(tmpaccum);
-                //arma::colvec ret( accum.N );
-                //std::copy(accum.list.begin(), accum.list.end(), ret.begin());
+                ret = accum.get_colvec();
             }
             // reset the accumulated 
             accum.fill(0);
@@ -210,7 +200,6 @@ class Pop {
                 ////////////////////////////
                 // many in-place, sequential, possible modifications of beta
                 /////////////////////////
-                Rf_PrintValue(wrap(3));
                 if (pars("schooltype") == 0) {
                     beta_now = pars("R0") * pars("gamma"); 
                     //sin forcing
@@ -218,7 +207,6 @@ class Pop {
                       pars("R0") * pars("gamma") * 
                       ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
                 };
-                Rf_PrintValue(wrap(3));
                 //// checkme!!
                 //if (pars("schooltype")== 1) {
                     //termtime forcing, schoold scedule passed in as vector of 0/1??
@@ -232,16 +220,13 @@ class Pop {
                 //
                 // multiple ways to do latent/imports...??
                 // everyone gets the same internal dynamics
-                Rf_PrintValue(wrap(5));
                 latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
-                Rf_PrintValue(wrap(6));
                 if (pars("imports")== 0 ) {
                     // Metapop!
                     // Ieff is scaled for N at metapop level
                     // changed so self-connect == 0
                     import_rate = beta_now*states("S")*states("Ieff"); // is Ieff implemented yet??
                 } else {
-                    Rf_PrintValue(wrap(7));
                     // manual imports, multiply by S at the end
                     switch ( static_cast<int>(pars("importmethod"))) {
                         case 0:
@@ -251,7 +236,6 @@ class Pop {
                         // no connection, all are *S
                         // try 0, 
                         case 1:
-                            Rf_PrintValue(wrap(8));
                             // constant random imports, no influence of pop 
                             import_rate = pars("imports");
                             //if (0) {
@@ -288,7 +272,6 @@ class Pop {
                                 break;
                     } // end switch
                     // multiply imports by S at the end
-                        Rf_PrintValue(wrap(9));
                     import_rate *= states("S");
                 };
 
@@ -296,25 +279,20 @@ class Pop {
             // done with prep, now compute events 
             // why N??
             //events.list["birth"] = myrpois( states("N") * pars("birth"), states("N")) ;
-            Rf_PrintValue(wrap(10));
             events.list["birth"] = Rf_rpois( states("N") * pars("birth")) ;
-            Rf_PrintValue(wrap(11));
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
                 events.list["imports"] = Rf_rpois( import_rate );
             };
-            Rf_PrintValue(wrap(3));
             // Should current events be included in ceiling?
             //events.list["latent"] = myrpois( latent_rate, states("S") + events("birth"));
             //events.list["infect"] = myrpois( pars("sigma") * states("E"), states("E") + events("latent"));
             //events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I") + events("infect"));
             //  
             //  This formulation is order-independent
-                Rf_PrintValue(wrap(3));
             events.list["latent"] = myrpois( latent_rate, states("S"));
             events.list["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
             events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
-                Rf_PrintValue(wrap(3));
             if ( pars("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
                 events.list["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
@@ -324,7 +302,7 @@ class Pop {
                 // otherwise we're adding
                 events.list["deltaR"] = Rf_rpois( states("N")* fabs(pars("deltaR"))); 
             };
-                Rf_PrintValue(wrap(3));
+            //Rf_PrintValue(events.list);
         };
 
 

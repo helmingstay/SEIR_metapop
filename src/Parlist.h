@@ -11,8 +11,9 @@ class Parlist {
             return as<T>(list[varname]);
         };
 
-        double add(std::string varname, T val){
-            list[varname] = list[varname] + val;
+        void add(std::string varname, T val){
+            // use the operator() to do the cast when getting the value
+            list[varname] = (*this)(varname) + val;
         };
 
         //Rcpp::List& operator()( std::string name ){
@@ -59,11 +60,28 @@ class Parlist {
             std::copy(vals.begin(), vals.end(), list.begin());
         }
 
+        T min() {
+            std::vector<T> tmpvec;
+            tmpvec = std::vector<T>(N);
+            std::copy(list.begin(), list.end(), tmpvec.begin());
+            T min_elem = *(std::min_element(tmpvec.begin(), tmpvec.end()));
+            return min_elem;
+        }
+
+        arma::colvec get_colvec() {
+            arma::colvec ret(N);
+            for(int ii=0; ii<N; ii++){
+                ret[ii] = static_cast<T>(list[ii]);
+            }
+            return ret;
+        }
+
     public:
         // variables
         int N;
         std::vector< std::string> names;
         Rcpp::List list;
+    //map<std::string, T> list;
 
     private:
 

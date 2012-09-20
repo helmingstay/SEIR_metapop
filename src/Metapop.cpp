@@ -34,13 +34,13 @@ class Metapop {
             // takes R-style 1-based index of state to retrieve
             // returns matrix of observed history of that state for each pop
             // cities as cols, rows as time
-            int nobs = pops[npop].iobs;
+            int nobs = pops[npop-1].iobs;
             arma::mat  ret(nobs, npop);
             for (unsigned int ii=0; ii<npop; ii++) {
                 ret.col(ii) = pops[ii].getstate(n-1);
             };
             return wrap(ret);
-        } 
+        }   
 
         SEXP setpars( SEXP metapars_, SEXP pars_) {
             metapars.set(metapars_);
@@ -60,14 +60,11 @@ class Metapop {
         }
 
         void steps( int n ) {
-            Rf_PrintValue(wrap(1));
             if (!ready) {
                 throw std::runtime_error("Tried to run model before parameter initialization");
             }
             // advance the model forward n steps
-            Rf_PrintValue(wrap(2));
             RNGScope scope; // when to call this??
-            Rf_PrintValue(wrap(3));
             for (int ii = 0; ii<n; ii++) {
                 prestep();
                 step();
@@ -110,19 +107,22 @@ class Metapop {
         void poststep(){
             // stub of anything that needs to be completed outside of individual pops
         };
- 
+      
+
+
+
+
         void step( ) {
             //  intra-population functions
             // take the next step for each pop
-            Rf_PrintValue(wrap(1));
             for ( int ithis = 0; ithis < npop; ithis++) {
-                Rf_PrintValue(wrap(2));
                pops[ithis].step(istep);
-                Rf_PrintValue(wrap(3));
             } 
             istep++;
         }
 };
+
+
 
 
 
