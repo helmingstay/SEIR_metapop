@@ -2,16 +2,37 @@ using namespace Rcpp;
 
 template <typename T>
 class Parlist {
+    typedef typename std::vector< std::string> STRINGVEC;
+    typedef typename std::map<std::string, T> MAP;
+    typedef typename std::map<std::string, T>::iterator MAPIT;
+
     public:
         //Parlist():
             // check that list is initialized before accessing??
             //{}
-        &T operator()(const std::string varname){
+        //?? reference??
+        inline T& operator()(const std::string &varname){
+            // give error if varname not in names?
+            bool debug = false;
+            if (debug) {
+                STRINGVEC::iterator it = find(names.begin(), names.end(), varname);
+                if (it == names.end()) {
+                    Rf_PrintValue(wrap("Attempt to access non-existent named element:"));
+                    Rf_PrintValue(wrap(varname));
+                    throw std::range_error(varname);
+                }
+            }
             // get parameter list element named varname, return as int
-            &list[varname];
+            return list[varname];
         };
 
-        void add(std::string varname, T val){
+        // !! remove this, replace with () in Pop.h
+        inline T& operator[](const std::string &varname){
+            // get parameter list element named varname, return as int
+            return list[varname];
+        };
+
+        inline void add(const std::string &varname, T val){
             // use the operator() to do the cast when getting the value
             list[varname] = list[varname] + val;
         };
@@ -20,58 +41,75 @@ class Parlist {
             //return list[name];
         //}
 
-        void set(Rcpp::List newlist){
-            // initialize elements from a named input list with values
-            list = newlist;
-            N = list.size();
-            names = mk_names( list.attr("names") );
+        void set(SEXP newlist){
+            // initialize elements from a named input list (passed as SEXP) with values
+            Rcpp::List tmplist(newlist);
+            CharacterVector tmpnames = tmplist.attr("names") ;
+            std::string tmpname;
+            // reinitialize list with zero-fill
+            init_fromnames(tmpnames);
+            // then fill with new values by name
+            for (int ii = 0; ii<N; ii++) {
+               tmpname = names[ii];
+                list[ tmpname ] = as<T>( tmplist[ tmpname ] );
+            }
+        }
+
+        void set(Rcpp::List tmplist){
+            // initialize elements from a named input list (passed as SEXP) with values
+            CharacterVector tmpnames = tmplist.attr("names") ;
+            std::string tmpname;
+            // reinitialize list with zero-fill
+            init_fromnames(tmpnames);
+            // then fill with new values by name
+            for (int ii = 0; ii<N; ii++) {
+               tmpname = names[ii];
+                list[ tmpname ] = as<T>( tmplist[ tmpname ] );
+            }
+        }
+
+        void init_fromnames( CharacterVector names_list) {
+            // Generate zero-filled named list from vector of names
+            names = Rcpp::as< STRINGVEC >(names_list);
+            N = names_list.size();
             if (N != names.size()) {
-                Rf_PrintValue(list);
+                Rf_PrintValue(wrap(list));
                 throw std::range_error("Error in Parlist.set: newlist must have names");
             }
+            for( int ii = 0; ii<N; ii++){
+              list[ names[ii] ] = static_cast<T>(0);
+            }
         }
 
-        void set(SEXP newlist_){
-            // exposed to R
-            //
-            Rcpp::List newlist(newlist_);
-            set(newlist);
+        inline void fill( T val) {
+            MAPIT it;
+            // fill list with a single value
+            for (it = list.begin(); it != list.end(); it++){
+                it->second = val;
+            }
+            //std::fill( list.begin(), list.end(), val);
         }
 
-        void init_fromnames( CharacterVector nameslist) {
-            // init from a list of names, fill with zeros (as doubles)
-            // called from C++ Events
-            names = mk_names(nameslist);
-            list = mk_list(names);
-            N = list.size();
-            // fill with zeros 
-            fill(0);
-        }
-        void fill( T val) {
-            std::fill( list.begin(), list.end(), val);
-        }
-
-        void copy( NumericVector vals ) {
+        void copy( const std::vector<T> &vals ) {
+            // copy vector of values into the list by position
             if (list.size() != vals.size()) {
-                Rf_PrintValue(list);
-                Rf_PrintValue(vals);
+                Rf_PrintValue(wrap(list));
+                Rf_PrintValue(wrap(vals));
                 throw std::range_error("Error in Parlist.copy: new values must have same dim as list");
             }
-            std::copy(vals.begin(), vals.end(), list.begin());
+            //std::copy(vals.begin(), vals.end(), list.begin());
+            // map iterator doesn't seem to order by first fill...
+            // fill by name instead
+            for (int ii = 0; ii < N; ii++) {
+                list[ names[ii] ] = vals[ii];
+            }
         }
 
-        T min() {
-            std::vector<T> tmpvec;
-            tmpvec = std::vector<T>(N);
-            std::copy(list.begin(), list.end(), tmpvec.begin());
-            T min_elem = *(std::min_element(tmpvec.begin(), tmpvec.end()));
-            return min_elem;
-        }
-
-        arma::colvec get_colvec() {
-            arma::colvec ret(N);
-            for(int ii=0; ii<N; ii++){
-                ret[ii] = static_cast<T>(list[ii]);
+        arma::Col<T> get_colvec() {
+            arma::Col<T> ret(N);
+            // copy list values into the column for return
+            for (int ii = 0; ii < N; ii++) {
+                ret[ii] = list[ names[ii] ];
             }
             return ret;
         }
@@ -79,28 +117,8 @@ class Parlist {
     public:
         // variables
         int N;
-        std::vector< std::string> names;
-        Rcpp::List list;
-        map<std::string, T> list;
-
-    private:
-
-        std::vector< std::string> mk_names( CharacterVector names_list ) {
-            // function to turn list of names (from attributes) into vector suitable for list indexing
-            std::vector< std::string> ret = Rcpp::as< std::vector< std::string> >(names_list);
-            return ret;
-        }
-
-        map<std::string, T> list mk_list( std::vector< std::string> list_names ) {
-            // function to turn named list from vector of names
-            // initialize list by size
-            //std::string thisname;
-            map<std::string, T> ret;
-            for( int ii = list_names.size(); ii>0; ii--){
-              ret[ list_names[ii] ] = 0;
-            }
-            return ret;
-        }
+        STRINGVEC names;
+        MAP list;
 
 };
 

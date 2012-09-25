@@ -42,12 +42,12 @@ class Pop {
                     nobsvars = accum.N;   
                 }
                 // initialize observation matrix with zero-fill
-                obsmat = arma::mat(nobsvars, nobs);
+                obsmat = arma::umat(nobsvars, nobs);
                 obsmat.zeros();
             }
         //Rcpp::List states, events, accum;
         int iobs;  // index of current observation, public so metapop can get final dimensions
-        arma::mat obsmat;      // the observation matrix - "final" output 
+        arma::umat obsmat;      // the observation matrix - "final" output 
                                 // should be simple to implement grow-as-needed, 
                                 // just need a resize method taking int
                                 // that updates nobs and resizes obsmat
@@ -68,7 +68,8 @@ class Pop {
         // making the Parlists public exposes their methods to metapop
          // keeping them private may be cleaner, but requires a lot of overhead to set each individually
         Parlist<double> pars; 
-        Parlist<int> states, events, accum; // should be unsigned??
+        // as unsigned, these will never be negative and therefore can wrap
+        Parlist<unsigned int> states, events, accum; // should be unsigned??
 
         void step(int istep) {
             
@@ -80,10 +81,10 @@ class Pop {
            }
         }
 
-        arma::colvec getstate(int whichstate) {
+        arma::ucolvec getstate(int whichstate) {
             // get the full history of the given obsvariable 
             // only return weeks that have been recoded
-            arma::colvec tmp(arma::trans(obsmat.row(whichstate)));
+            arma::ucolvec tmp(arma::trans(obsmat.row(whichstate)));
             tmp.resize(iobs);
             return tmp;
         }
@@ -110,8 +111,9 @@ class Pop {
             std::string event_name, state_name; 
             //Rf_PrintValue(wrap(istep));
             //Rf_PrintValue(wrap("before"));
-            //Rf_PrintValue(events.list);
-            //Rf_PrintValue(states.list);
+            //Rf_PrintValue(wrap(states.get_colvec().t()));
+            //Rf_PrintValue(wrap(events.get_colvec().t()));
+            //?? iterate over names??
             for ( ievent = 0; ievent < events.N; ievent++) {
                 // pull out name as string for accessing lists
                 event_name = events.names[ievent];
@@ -126,21 +128,13 @@ class Pop {
                 }
             }
             //Rf_PrintValue(wrap("after"));
-            //Rf_PrintValue(states.list);
-            // then check for negative values
-            // Throw an exception if found
-            //int statemin = min(states);
-            int min_elem = states.min();
-            //std::copy(states.list.begin(), states.list.end(), statevec.begin());
-            if ( min_elem < 0) {
-                Rf_PrintValue(wrap(istep));
-                Rf_PrintValue(wrap(states.list));
-                throw_negative_state();
-            }
+            //Rf_PrintValue(wrap(states.get_colvec().t()));
+            //Rf_PrintValue(wrap(events.get_colvec().t()));
         }
 
         void observe(int istep) {
-            arma::colvec ret( nobsvars );
+            // ret should be reference to obsmat??
+            arma::ucolvec ret( nobsvars );
             if ( iobs +1 > nobs) {
                 // this should never happen, right?
                 // see above for implementing dynamic resizing
@@ -148,8 +142,8 @@ class Pop {
             }
             if (obsall) {
                 // copy both accum and states
-                arma::colvec accumvec = accum.get_colvec();
-                arma::colvec statesvec = states.get_colvec();
+                arma::ucolvec accumvec = accum.get_colvec();
+                arma::ucolvec statesvec = states.get_colvec();
                 std::copy(accumvec.begin(), accumvec.end(), ret.begin());
                 // also copy states
                 std::copy(statesvec.begin(), statesvec.end(), ret.begin()+accum.N);
@@ -165,11 +159,11 @@ class Pop {
 
         SEXP throw_negative_state(void) {
             // check that init is the right length
-            BEGIN_RCPP
+            //BEGIN_RCPP
             throw std::range_error("State vector has negative values");
             NumericVector dummy(1);
             return dummy;
-            END_RCPP
+            //END_RCPP
         }
 
         // these should go in model!!
@@ -279,10 +273,10 @@ class Pop {
             // done with prep, now compute events 
             // why N??
             //events.list["birth"] = myrpois( states("N") * pars("birth"), states("N")) ;
-            events.list["birth"] = Rf_rpois( states("N") * pars("birth")) ;
+            events["birth"] = Rf_rpois( states("N") * pars("birth")) ;
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
-                events.list["imports"] = Rf_rpois( import_rate );
+                events["imports"] = Rf_rpois( import_rate );
             };
             // Should current events be included in ceiling?
             //events.list["latent"] = myrpois( latent_rate, states("S") + events("birth"));
@@ -290,19 +284,18 @@ class Pop {
             //events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I") + events("infect"));
             //  
             //  This formulation is order-independent
-            events.list["latent"] = myrpois( latent_rate, states("S"));
-            events.list["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
-            events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
+            events["latent"] = myrpois( latent_rate, states("S"));
+            events["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
+            events["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
             if ( pars("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events.list["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
+                events["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
                 // then set negative
-                events.list["deltaR"] = events("deltaR") * -1;
+                events["deltaR"] = events("deltaR") * -1;
             } else {
                 // otherwise we're adding
-                events.list["deltaR"] = Rf_rpois( states("N")* fabs(pars("deltaR"))); 
+                events["deltaR"] = Rf_rpois( states("N")* fabs(pars("deltaR"))); 
             };
-            //Rf_PrintValue(events.list);
         };
 
 

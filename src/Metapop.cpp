@@ -3,15 +3,12 @@
 #include "Parlist.h"
 #include "Pop.h"
 
-
-
-
 using namespace Rcpp; 
 
 class Metapop { 
     public:
         Metapop(SEXP npop_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
-           npop(as<unsigned int>(npop_)), istep(0), metapars(), ready(false)
+           npop(as<unsigned int>(npop_)), istep(0), metapars(), ready_pop(false), ready_metapop(false)
         {
             // initialize a single population
             Pop tmppop( transmat_, poplist_);
@@ -22,32 +19,37 @@ class Metapop {
             // Set states of each pop
             // ?? check that dimensions of initstates matches 
             // for initstates, states are rows, pops are cols
-            NumericMatrix initstates(initstates_);
+            IntegerMatrix initstates(initstates_);
             for (unsigned int ii=0; ii<npop; ii++) {
                 // grab the column for this city
-                NumericVector tmpinit = initstates( _, ii);
+                IntegerVector tmpvec = initstates( _, ii);
+                std::vector<unsigned int> tmpinit = as<std::vector<unsigned int> >(tmpvec);
                 pops[ii].states.copy( tmpinit);
             };
         };
 
-        NumericMatrix get_metapop_state(int n) { 
+        IntegerMatrix get_metapop_state(int n) { 
             // takes R-style 1-based index of state to retrieve
             // returns matrix of observed history of that state for each pop
             // cities as cols, rows as time
             int nobs = pops[npop-1].iobs;
-            arma::mat  ret(nobs, npop);
+            arma::umat  ret(nobs, npop);
             for (unsigned int ii=0; ii<npop; ii++) {
                 ret.col(ii) = pops[ii].getstate(n-1);
             };
             return wrap(ret);
         }   
 
-        SEXP setpars( SEXP metapars_, SEXP pars_) {
+        void set_metapop( SEXP metapars_) {
             metapars.set(metapars_);
+            ready_metapop = true;
+        }
+
+        void set_pop( SEXP pars_) {
             // Takes a list of lists, each sublist contains that city's parlist
             // Loop through and set for each pop
             Rcpp::List tmppars(pars_);
-            BEGIN_RCPP
+            //BEGIN_RCPP
             if ( tmppars.size() != npop)  {
                 throw std::range_error(" the paramater list of lists should have npop elements");
             };
@@ -55,12 +57,12 @@ class Metapop {
                Rcpp::List thispars = tmppars(ii);
                pops[ii].pars.set( thispars ) ;
             } 
-            ready = true;
-            END_RCPP
+            ready_pop = true;
+            //END_RCPP
         }
 
         void steps( int n ) {
-            if (!ready) {
+            if (!(ready_pop && ready_metapop)) {
                 throw std::runtime_error("Tried to run model before parameter initialization");
             }
             // advance the model forward n steps
@@ -78,9 +80,9 @@ class Metapop {
         unsigned int npop;
         std::vector<Pop> pops;
         int istep; // index of current step, separate from iobs
-        bool ready;  // toogle this to true once pars have been set
+        bool ready_pop, ready_metapop;  // toogle this to true once pars have been set
 
-        void prestep(){
+        inline void prestep(){
             // access matrices via metapars
             // NumericMatrix xymat;  //distance matrix between cities
             // NumericMatrix couplemat;  //metapop coupling matrix between cities
@@ -104,11 +106,11 @@ class Metapop {
             }
         };
 
-        void poststep(){
+        inline void poststep(){
             // stub of anything that needs to be completed outside of individual pops
         };
       
-        void step( ) {
+        inline void step( ) {
             //  intra-population functions
             // take the next step for each pop
             for ( int ithis = 0; ithis < npop; ithis++) {
@@ -117,21 +119,6 @@ class Metapop {
             istep++;
         }
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
@@ -158,10 +145,12 @@ RCPP_MODULE(seirmod){
                     int (which state column to return,1-based indexing).  \
                     Return matrix of all cities, given state"
     )
-    .method("setpars", &Metapop::setpars, "args: \
-                    two lists:  \
-            * first, list of metapop pars   \
-            * 2nd:  list-of-list of length npop, each containing that city's parameters\
+    .method("set_pop", &Metapop::set_pop, "args: \
+            list-of-list of length npop, each containing that city's parameters\
+            NOTE this must be run before model steps can be taken"
+    )
+    .method("set_metapop", &Metapop::set_metapop, "args: \
+            list of metapop pars   \
             NOTE this must be run before model steps can be taken"
     )
     .method("steps", &Metapop::steps, "args: number of steps to advance all cities")
