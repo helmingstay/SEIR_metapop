@@ -2,7 +2,7 @@ using namespace Rcpp;
 
 class Pop {
     public:
-        Pop( SEXP transmat_, SEXP poplist_):
+        Pop( SEXP transmat_, SEXP poplist_, SEXP dt_):
             // prep states, events, and accum as named lists in R
             // events are cols, states are rows
             transmat(transmat_),
@@ -20,6 +20,7 @@ class Pop {
                 obsall = as<bool>(poplist["obsall"]);
                 nobs = as<int>(poplist["nobs"]);
                 obs_nstep = as<int>(poplist["obs_nstep"]);
+                dt = as<double>(dt_); 
                 // !! check that all accum names are in events names
                 //
                 // pull out row and column names from transmat,
@@ -55,6 +56,7 @@ class Pop {
     private:
         // transition as columns, state variables as rows
         IntegerMatrix transmat;
+        double dt;
         bool obsall;
         unsigned int nobsvars;       // number of obsvars == number of rows in obs matrix
         unsigned int nobs;  // total number of observations, == ncol of output obs matrix
@@ -173,7 +175,61 @@ class Pop {
             int result = Rf_rpois( rate );
             return std::min(result, mymax);
         }
-            
+
+        inline IntegerVector multinom_rates(const int &size, const NumericVector &rates) { //, const bool &debug) {
+            //if (debug) {
+                if ( size<0 ) {
+                        throw std::range_error("In multinom, negative size not allowed");
+                }
+                if ( *std::min_element(rates.begin(), rates.end())<0.0 ) {
+                        throw std::range_error("In multinom, negative rates not allowed");
+                }
+            //}
+            unsigned int nevent = rates.size();      // was m
+            IntegerVector ret(nevent, 0);   // pass in reference to fill? probably not, zero-fill is assumed
+            double totalRate = sum(rates);  // was p
+            unsigned int totalEvents, thisevent;
+            double thisrate;
+            if (totalRate==0) {
+                return(ret);
+            } else {
+                // check if this is finite??
+                totalEvents = Rf_rbinom(size, 1.0-exp(-totalRate*dt));  
+                for (int ii = 0; ii < nevent-1; ii++) {
+                    thisrate = rates[ii];
+                    if (  totalEvents == 0 ) { // all events allocated, done
+                        return ret;
+                    } else if ( thisrate == 0.0 )  { //  nothing to do here
+                        continue;
+                    } else {
+                        // conditional binomial, how many events go here?
+                        thisevent = Rf_rbinom(totalEvents, thisrate/totalRate);
+                        ret[ii] = thisevent;
+                        // decrement 
+                        totalEvents -= thisevent;
+                        totalRate -= thisrate;
+                    }
+                }
+                ret[nevent-1] = totalEvents; // leftovers go in last, if we havent returned yet
+            }
+            return ret;
+        }
+
+        inline unsigned int multinom_rates(const unsigned int &size, const double &rate) { //, const bool &debug) {
+            //if (debug) {
+                if ( size<0 ) {
+                        throw std::range_error("In multinom, negative size not allowed");
+                }
+                if ( rate<0.0 ) {
+                        throw std::range_error("In multinom, negative rates not allowed");
+                }
+            //}
+            if (rate==0 || size == 0) {
+                return 0;
+            } 
+            return Rf_rbinom(size, 1-exp(-rate*dt));  
+        }
+
 
         // begin model definition
         // also see prestep in Metapop
@@ -195,7 +251,7 @@ class Pop {
                 // many in-place, sequential, possible modifications of beta
                 /////////////////////////
                 if (pars("schooltype") == 0) {
-                    beta_now = pars("R0") * pars("gamma"); 
+                    //beta_now = pars("R0") * pars("gamma"); 
                     //sin forcing
                     beta_now = 
                       pars("R0") * pars("gamma") * 
@@ -214,6 +270,7 @@ class Pop {
                 //
                 // multiple ways to do latent/imports...??
                 // everyone gets the same internal dynamics
+                Rf_PrintValue(wrap(states.list));
                 latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
                 if (pars("imports")== 0 ) {
                     // Metapop!
@@ -284,12 +341,16 @@ class Pop {
             //events.list["recover"] = myrpois( pars("gamma") * states("I"), states("I") + events("infect"));
             //  
             //  This formulation is order-independent
-            events["latent"] = myrpois( latent_rate, states("S"));
-            events["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
-            events["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
+            //events["latent"] = myrpois( latent_rate, states("S"));
+            events["latent"] = multinom_rates( states("S"), latent_rate );
+            events["infect"] = multinom_rates( states("E"), pars("sigma") * states("E"));
+            events["recover"] = multinom_rates( states("I"),  pars("gamma") * states("I"));
+            Rf_PrintValue(wrap(events.list));
+            Rf_PrintValue(wrap(latent_rate));
+            Rf_PrintValue(wrap(beta_now));
             if ( pars("deltaR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
+                events["deltaR"] = multinom_rates( states("R"),  states("N")* fabs(pars("deltaR"))); 
                 // then set negative
                 events["deltaR"] = events("deltaR") * -1;
             } else {

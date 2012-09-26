@@ -7,11 +7,11 @@ using namespace Rcpp;
 
 class Metapop { 
     public:
-        Metapop(SEXP npop_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
+        Metapop(SEXP dt_, SEXP npop_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
            npop(as<unsigned int>(npop_)), istep(0), metapars(), ready_pop(false), ready_metapop(false)
         {
             // initialize a single population
-            Pop tmppop( transmat_, poplist_);
+            Pop tmppop( transmat_, poplist_, dt_);
             // then make a vector of them
             pops = std::vector<Pop>(npop, tmppop);
             // check that nrow xymat == npop!!??
@@ -123,7 +123,8 @@ class Metapop {
 RCPP_MODULE(seirmod){
 	using namespace Rcpp ;
     class_<Metapop>("Metapop")
-    .constructor<SEXP, SEXP, SEXP, SEXP>("args: \
+    .constructor<SEXP, SEXP, SEXP, SEXP, SEXP>("args: \
+            dt (double), \
             npop (int, number of cities), \
             metapars (list of parameters required by metapop model, might contain for example): \
             {\
@@ -156,3 +157,8 @@ RCPP_MODULE(seirmod){
     .method("steps", &Metapop::steps, "args: number of steps to advance all cities")
     ;
 }        
+
+
+
+
+

@@ -12,6 +12,7 @@ newModel <- function(initstates, transmat, accumvars, obsall, nobs, obs_nstep, d
     ## nobs:        int, total number of observations
 
     ## errorchecking
+    if ( deltat < 0 )  stop("deltat must be >  0")
     if ( !all( (initstates %% 1) == 0 )) stop("Only integer values allowed for initstates")
     if ( !all( (transmat %% 1) == 0 )) stop("Only integer values allowed for initstates")
     if ( !is.character(accumvars))  stop("Accumvars is a character vector naming events to accumulate")
@@ -24,7 +25,7 @@ newModel <- function(initstates, transmat, accumvars, obsall, nobs, obs_nstep, d
     poplist <- list(accum=accumvars, obsall = obsall, nobs=nobs, obs_nstep=obs_nstep, deltat=deltat)
 
     npop <- ncol(initstates)
-    model <- new(Metapop, npop, initstates, transmat, poplist)
+    model <- new(Metapop, deltat, npop, initstates, transmat, poplist)
     return(model)
 }
 
