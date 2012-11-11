@@ -53,12 +53,13 @@ class SEIR {
             // ??
             deltat = as<double>(pars["deltat"]);
             // percap per day birth rate 
-            rbirth = as<double>(pars["birth"]);
+            // migration is also in here
+            rbirth = as<double>(pars["dS"]);
             rsigma = as<double>(pars["sigma"]);
             rgamma = as<double>(pars["gamma"]);
             // percap per day change in R
             // includes death and migration
-            rdeltaR = as<double>(pars["deltaR"]);
+            rdeltaR = as<double>(pars["dR"]);
             // R0 used to calculate mean beta if schooltype == 0 (sin) !!fixme??
             rR0 = as<double>(pars["R0"]);
             // binomial probability of observing accumulated I (over nsteps)
