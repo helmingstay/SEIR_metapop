@@ -65,6 +65,7 @@ class Pop {
         
 
     public:
+        IntegerVector schoolterm;
         // making the Parlists public exposes their methods to metapop
          // keeping them private may be cleaner, but requires a lot of overhead to set each individually
         Parlist<double> pars; 
@@ -72,7 +73,6 @@ class Pop {
         Parlist<unsigned int> states, events, accum; // should be unsigned??
 
         void step(int istep) {
-            
            calcEvents(istep); 
            accumEvents(istep);
            updateStates(istep);
@@ -202,12 +202,12 @@ class Pop {
                       ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
                 };
                 //// checkme!!
-                //if (pars("schooltype")== 1) {
-                    //termtime forcing, schoold scedule passed in as vector of 0/1??
+                if (pars("schooltype")== 1) {
+                    //termtime forcing, school scedule passed in as vector of 1/-1
                     // add 365 to ensure doy is always positive
-                    //int doy = (istep-pars("schoollag")+365) % 365;
-                    //beta_now = pars("beta0")*pow(1.0+pars("betaforce"), pars.NV("schooldays")( doy ));
-                //};
+                    int doy = (istep+1) % 365;
+                    beta_now = pars("beta0")*pow(1.0+pars("betaforce"), schoolterm( doy ));
+                };
                 //
                 //
                 // Effective I is computed at the metapop level for this timestep
@@ -273,7 +273,7 @@ class Pop {
             // done with prep, now compute events 
             // why N??
             //events.list["birth"] = myrpois( states("N") * pars("birth"), states("N")) ;
-            events["birth"] = Rf_rpois( states("N") * pars("birth")) ;
+            events["dS"] = Rf_rpois( states("N") * pars("dS"));
             // imports aren't limited / no mass balance
             if (import_rate != 0 ) {
                 events["imports"] = Rf_rpois( import_rate );
@@ -287,14 +287,14 @@ class Pop {
             events["latent"] = myrpois( latent_rate, states("S"));
             events["infect"] = myrpois( pars("sigma") * states("E"), states("E"));
             events["recover"] = myrpois( pars("gamma") * states("I"), states("I"));
-            if ( pars("deltaR")< 0 ) { 
+            if ( pars("dR")< 0 ) { 
                 // if deltaR is negative, only remove R max 
-                events["deltaR"] = myrpois( states("N")* fabs(pars("deltaR")), states("R")); 
+                events["dR"] = myrpois( states("N")* fabs(pars("dR")), states("R")); 
                 // then set negative
-                events["deltaR"] = events("deltaR") * -1;
+                events["dR"] = events("dR") * -1;
             } else {
                 // otherwise we're adding
-                events["deltaR"] = Rf_rpois( states("N")* fabs(pars("deltaR"))); 
+                events["dR"] = Rf_rpois( states("N")* fabs(pars("dR"))); 
             };
         };
 

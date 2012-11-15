@@ -3,6 +3,7 @@
 #include "Parlist.h"
 #include "Pop.h"
 
+
 using namespace Rcpp; 
 
 class Metapop { 
@@ -58,6 +59,22 @@ class Metapop {
                pops[ii].pars.set( thispars ) ;
             } 
             ready_pop = true;
+            //END_RCPP
+        }
+
+
+        void set_school( SEXP tmp_) {
+            // Takes a list of vectors, each vector contains that city's school term
+            // Loop through and set for each pop
+            Rcpp::List tmp(tmp_);
+            //BEGIN_RCPP
+            if ( tmp.size() != npop)  {
+                throw std::range_error(" the schoo list should have npop elements");
+            };
+            for ( unsigned int ii = 0; ii < npop; ii++) {
+               IntegerVector thisschool = tmp(ii);
+               pops[ii].schoolterm =  thisschool  ;
+            } 
             //END_RCPP
         }
 
@@ -148,6 +165,9 @@ RCPP_MODULE(seirmod){
     .method("set_pop", &Metapop::set_pop, "args: \
             list-of-list of length npop, each containing that city's parameters\
             NOTE this must be run before model steps can be taken"
+    )
+    .method("set_school", &Metapop::set_school, "args: \
+            list of school term vectors for each city"
     )
     .method("set_metapop", &Metapop::set_metapop, "args: \
             list of metapop pars   \
