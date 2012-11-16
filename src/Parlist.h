@@ -11,9 +11,9 @@ class Parlist {
             // check that list is initialized before accessing??
             //{}
         //?? reference??
-        inline T& operator()(const std::string &varname){
+        inline T& operator()(const std::string &varname, bool debug = false){
             // give error if varname not in names?
-            bool debug = false;
+            //bool debug = false;
             if (debug) {
                 STRINGVEC::iterator it = find(names.begin(), names.end(), varname);
                 if (it == names.end()) {

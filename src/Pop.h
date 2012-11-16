@@ -72,8 +72,8 @@ class Pop {
         // as unsigned, these will never be negative and therefore can wrap
         Parlist<unsigned int> states, events, accum; // should be unsigned??
 
-        void step(int istep) {
-           calcEvents(istep); 
+        void step(int istep, int metaI, int metaN) {
+           calcEvents(istep, metaI, metaN); 
            accumEvents(istep);
            updateStates(istep);
            if ( istep % obs_nstep == 1 ) {
@@ -117,7 +117,7 @@ class Pop {
             for ( ievent = 0; ievent < events.N; ievent++) {
                 // pull out name as string for accessing lists
                 event_name = events.names[ievent];
-                    
+                // for each state, update if needed
                 for ( istate = 0; istate < states.N; istate++) {
                     coef = transmat( istate, ievent);
                     if ( coef == 0 ) continue;  // nothing to do
@@ -177,7 +177,7 @@ class Pop {
 
         // begin model definition
         // also see prestep in Metapop
-        void calcEvents(int istep) {
+        void calcEvents(int istep, int metaI, int metaN) {
             // this is the *only* user-modifiable function
             // in combination with the transition matrix, this is the model
             // should be a private function that takes pars, states, and istep
@@ -191,83 +191,81 @@ class Pop {
             double beta_now, latent_rate, import_rate; 
             double Pi = arma::datum::pi;
 
-                ////////////////////////////
-                // many in-place, sequential, possible modifications of beta
-                /////////////////////////
-                if (pars("schooltype") == 0) {
-                    beta_now = pars("R0") * pars("gamma"); 
-                    //sin forcing
-                    beta_now = 
-                      pars("R0") * pars("gamma") * 
-                      ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
-                };
-                //// checkme!!
-                if (pars("schooltype")== 1) {
-                    //termtime forcing, school scedule passed in as vector of 1/-1
-                    // add 365 to ensure doy is always positive
-                    int doy = (istep+1) % 365;
-                    beta_now = pars("beta0")*pow(1.0+pars("betaforce"), schoolterm( doy ));
-                };
-                //
-                //
-                // Effective I is computed at the metapop level for this timestep
-                //
-                // multiple ways to do latent/imports...??
-                // everyone gets the same internal dynamics
-                latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
-                if (pars("imports")== 0 ) {
-                    // Metapop!
-                    // Ieff is scaled for N at metapop level
-                    // changed so self-connect == 0
-                    import_rate = beta_now*states("S")*states("Ieff"); // is Ieff implemented yet??
-                } else {
-                    // manual imports, multiply by S at the end
-                    switch ( static_cast<int>(pars("importmethod"))) {
-                        case 0:
-                            // no imports
-                            import_rate = 0;
-                            break;
-                        // no connection, all are *S
-                        // try 0, 
-                        case 1:
-                            // constant random imports, no influence of pop 
-                            import_rate = pars("imports");
-                            //if (0) {
-                                // example of how to print conditional debugging information
-                                // make a list, add desired elements, and then print
-                                //Rcpp::List debug_report;
-                                //debug_report["S"] = S;
-                                //debug_report["beta"] = beta_now;
-                                //debug_report["I"] = I;
-                                //debug_report["N"] = N;
-                                //debug_report["latent_rate"] = latent_rate;
-                                //if( istep % 1000 == 0)  Rf_PrintValue(debug_report);
-                            //};
-                            break;
-                        case 2:
-                            //  like 2, only moved N inside
-                            //  pulsed inmports, no pop 
-                            // divide rimports by rbeta0 so comparable between all
-                            import_rate = beta_now*(pars("imports")/pars("beta0"));
-                            break;
-                        // implement
-                        //case 3:
-                            // constant random imports proportional/modified by to pop
-                            // import_rate  = (pars("imports")*pow(states["N"], pars("import_power")))/states["N"];
-                         //   break;
-                        //case 4:
-                            // pulsed random imports proportional/modified by to pop
-                            //import_rate = (beta_now*(states["I"]+ 
-                            //              ((pars("imports")/pars("beta0"))
-                            //                  * pow(states["N"], pars("import_power")))))/states["N"]; 
-                            //break;
-                        default:
-                            throw std::range_error("importmethod not implemented");
-                                break;
-                    } // end switch
-                    // multiply imports by S at the end
-                    import_rate *= states("S");
-                };
+            ////////////////////////////
+            // many in-place, sequential, possible modifications of beta
+            /////////////////////////
+            if (pars("schooltype") == 0) {
+                beta_now = pars("R0") * pars("gamma"); 
+                //sin forcing
+                beta_now = 
+                  pars("R0") * pars("gamma") * 
+                  ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
+            };
+            //// checkme!!
+            if (pars("schooltype")== 1) {
+                //termtime forcing, school scedule passed in as vector of 1/-1
+                // add 365 to ensure doy is always positive
+                int doy = (istep+1) % 365;
+                beta_now = pars("beta0")*pow(1.0+pars("betaforce"), schoolterm( doy ));
+            };
+            //
+            //
+            // Effective I is computed at the metapop level for this timestep
+            //
+            // multiple ways to do latent/imports...??
+            // everyone gets the same internal dynamics
+            latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
+            // manual imports, multiply by S at the end
+            switch ( static_cast<int>(pars("importmethod"))) {
+                //metapop
+                case -1:
+                    import_rate = (pars("imports")*(beta_now*(metaI-states("I"))))/(metaN * pow(states("N"), pars("pop.pow")));
+                    break;
+                // no imports
+                case 0:
+                    import_rate = 0;
+                    break;
+                // no connection, all are *S
+                // try 0, 
+                case 1:
+                    // constant random imports, no influence of pop 
+                    import_rate = pars("imports");
+                    //if (0) {
+                        // example of how to print conditional debugging information
+                        // make a list, add desired elements, and then print
+                        //Rcpp::List debug_report;
+                        //debug_report["S"] = S;
+                        //debug_report["beta"] = beta_now;
+                        //debug_report["I"] = I;
+                        //debug_report["N"] = N;
+                        //debug_report["latent_rate"] = latent_rate;
+                        //if( istep % 1000 == 0)  Rf_PrintValue(debug_report);
+                    //};
+                    break;
+                case 2:
+                    //  like 2, only moved N inside
+                    //  pulsed inmports, no pop 
+                    // divide rimports by rbeta0 so comparable between all
+                    import_rate = beta_now*(pars("imports")/pars("beta0"));
+                    break;
+                // implement
+                //case 3:
+                    // constant random imports proportional/modified by to pop
+                    // import_rate  = (pars("imports")*pow(states["N"], pars("import_power")))/states["N"];
+                 //   break;
+                //case 4:
+                    // pulsed random imports proportional/modified by to pop
+                    //import_rate = (beta_now*(states["I"]+ 
+                    //              ((pars("imports")/pars("beta0"))
+                    //                  * pow(states["N"], pars("import_power")))))/states["N"]; 
+                    //break;
+                default:
+                    throw std::range_error("importmethod not implemented");
+                        break;
+            } // end switch
+
+                // multiply imports by S at the end
+                import_rate *= states("S");
 
 
             // done with prep, now compute events 

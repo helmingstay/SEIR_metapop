@@ -1,10 +1,11 @@
+
 #include <Rcpp.h>          
 #include <RcppArmadillo.h>
 #include "Parlist.h"
 #include "Pop.h"
 
 
-using namespace Rcpp; 
+//using namespace Rcpp; 
 
 class Metapop { 
     public:
@@ -92,6 +93,7 @@ class Metapop {
         }
 
     private:
+        int metaI, metaN ; // Metapop sums of I and N
         // does parlist need to change in-flight? 
         Parlist<double> metapars;
         unsigned int npop;
@@ -111,9 +113,11 @@ class Metapop {
             // or remove dependence on Ieff -- can we grab statename from Events/SEIR?
             // do processing of migration here,
             // then take a step for each city
-            unsigned int ithis, iother;
             // first, get and save effective I for each pop
-            for ( ithis = 0; ithis < npop; ithis++) {
+            metaI, metaN = 0;
+            for ( int ii = 0; ii < npop; ii++) {
+                   metaI +=  pops[ii].states("I");
+                   metaN +=  pops[ii].states("N");
                 //reset
                 //pops[ithis].Ieff = 0;
                //for ( iother = 0; iother < npop; iother++) {
@@ -131,7 +135,7 @@ class Metapop {
             //  intra-population functions
             // take the next step for each pop
             for ( int ithis = 0; ithis < npop; ithis++) {
-               pops[ithis].step(istep);
+               pops[ithis].step(istep, metaI, metaN);
             } 
             istep++;
         }
