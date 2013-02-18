@@ -199,7 +199,7 @@ class Pop {
                 //sin forcing
                 beta_now = 
                   pars("R0") * pars("gamma") * 
-                  ( 1.0-pars("betaforce")* cos(2.0*Pi*(istep-pars("schoollag"))/365.0));
+                  ( 1.0-pars("betaforce")* cos(2.0*Pi*istep/365.0));
             };
             //// checkme!!
             if (pars("schooltype")== 1) {
