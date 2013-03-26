@@ -1,5 +1,3 @@
-
-#include <Rcpp.h>          
 #include <RcppArmadillo.h>
 #include "Parlist.h"
 #include "Pop.h"
