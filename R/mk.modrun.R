@@ -1,19 +1,19 @@
-require(foreach)
-require(multicore)
-require(doMC)
+#require(foreach)
+#require(multicore)
+#require(doMC)
 ## required but implicit:
 ## load('full.RData')
 #load('dat.demog.cityrates.RData')
 #load('dat.city.pop.RData')
 #load('dat.reprates.RData')
 ## force reload of SEIR
-require(SEIR)
+#require(SEIR)
 #detach(package:SEIR, unload=TRUE)
 #require(SEIR)
-source('mk.paperfuns.R')
-source('mk.scalefuns.R')
-source('mk.newfpc.R')
-source('mk.ensemble.fit.R')
+#source('mk.paperfuns.R')
+#source('mk.scalefuns.R')
+#source('mk.newfpc.R')
+#source('mk.ensemble.fit.R')
 
 
 mk.modrun = function(pardf, index.limits, newdemog, 
