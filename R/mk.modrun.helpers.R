@@ -1,6 +1,23 @@
 ## TODO!! see R/mk.modrun.R for use example
-newSEIRModel <- function(initmat, nsteps, obs_nstep){
-    ret = new(Metapop, ncity, geogmat, connectmat, nobs, nstate, nstep)
+newSEIRModel <- function(initmat, obs_nstep, sim_days, 
+    geogmat=NULL, connectmat=NULL
+){
+    ## initmat contains initial conditions 
+    ## for each state (rows) and city (cols)
+    .ncity <- ncol(initmat)
+    .nstate <- nrow(initmat)
+    ## matrix of geographic (x,y) locations of cities
+    ## not used at present
+    if (is.null(geogmat)) {
+        geogmat <- matrix( 1, nrow=.ncity, ncol=2)
+    }
+    ## matrix of connection weights between cities
+    ## not used at present
+    if (is.null(connectmat)) {
+        connectmat <- matrix( 1, nrow=.ncity, ncol=.ncity)
+    }
+    ## constructor based on src/SEIR.cpp
+    ret <- new(Metapop, .ncity, geogmat, connectmat, sim_days, .nstate, obs_nstep)
     return(ret)
 }
 

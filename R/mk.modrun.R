@@ -127,8 +127,8 @@ mk.modrun = function(parlist, index.limits, newdemog,
         ## turn to matrix for SEIR
         initmat = t(as.matrix(initdf))
         nyears = diff(run.limits)+1
-        #browser()??
-        mymod = newSEIRModel(initmat, nsteps=nyears*365, obs_nstep=obs_nstep )
+        browser()
+        mymod = newSEIRModel(initmat, obs_nstep=obs_nstep, sim_days=nyears*365)
         mymod$set_school(schoolterms)
         ## add metapop pars here
         mymod$set_metapop(list(dummy=1))

@@ -4,8 +4,9 @@
 library(doMC)
 registerDoMC()
 #registerDoMC(cores=4)
-##
-in.parallel <- T
+## run simulation in parallel in inner loop?
+in.parallel <- F
+## number of simulations
 nreps <- 10
 
 ##  then modify mod.final as a copy of mod.prep

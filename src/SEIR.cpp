@@ -439,6 +439,8 @@ RCPP_MODULE(seirmod){
 */
         
 
+// Make a vector of SEIR objects
+// Keep track of metapop connectivity, location, etc.
 class Metapop {
     public:
         Metapop(SEXP npop_, SEXP xymat_, SEXP cmat_, SEXP blocksize, SEXP nstates_, SEXP nstep) : 
