@@ -33,12 +33,12 @@ newSEIRModel <- function(initstates, nsteps=30*365, accumvars=c("latent","import
     ## nobs:        int, total number of observations
     ##
     nobs <- 1+(nsteps/obs_nstep)
-
     eventnames <- c("dS", "latent", "imports", "infect", "recover", "dR");
     statenames <- c("S", "E", "I", "R", "N")
     transmat <- matrix(0, nrow=length(statenames), ncol=length(eventnames)); 
     rownames(transmat) <- rownames(initstates) <- statenames
     colnames(transmat) <- eventnames
+    ## state transition definitions
     transmat["S", "dS"] = 1
     transmat["S", "latent"] = -1
     transmat["E", "latent"] = 1

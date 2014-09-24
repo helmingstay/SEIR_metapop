@@ -1,32 +1,8 @@
-## TODO!! see R/mk.modrun.R for use example
-newSEIRModel <- function(initmat, obs_nstep, sim_days, 
-    geogmat=NULL, connectmat=NULL
-){
-    ## initmat contains initial conditions 
-    ## for each state (rows) and city (cols)
-    .ncity <- ncol(initmat)
-    .nstate <- nrow(initmat)
-    ## matrix of geographic (x,y) locations of cities
-    ## not used at present
-    if (is.null(geogmat)) {
-        geogmat <- matrix( 1, nrow=.ncity, ncol=2)
-    }
-    ## matrix of connection weights between cities
-    ## not used at present
-    if (is.null(connectmat)) {
-        connectmat <- matrix( 1, nrow=.ncity, ncol=.ncity)
-    }
-    ## constructor based on src/SEIR.cpp
-    ret <- new(Metapop, .ncity, geogmat, connectmat, sim_days, .nstate, obs_nstep)
-    return(ret)
-}
-
-
 #' convenience function
 #' turn each matrix into a timeseries and then subset by the limits
-mk.modrun.mat.to.xts <- function(mymat, .nstep=obs_nstep, .index.limits=index.limits, my.names=city.names) { 
+mk.mat.to.xts <- function(mymat, nstep, index.limits, my.names) { 
     ## model outputs weekly, as shown by nstep (number of days per step)
-    my.index <- as.Date( (0:(nrow(mymat)-1)*.nstep+1), origin=index.limits[1]);
+    my.index <- as.Date( (0:(nrow(mymat)-1)*nstep+1), origin=index.limits[1]);
     ## trim to match data time window
     ret <- xts(mymat, my.index)[index.limits,]
     colnames(ret) <- my.names

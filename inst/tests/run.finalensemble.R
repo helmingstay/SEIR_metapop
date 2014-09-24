@@ -16,7 +16,7 @@ mod.final <- within(mod.prep, {
     US$model.pars <- within(US$model.pars, {
         R0=18  ## R0 must be present in demog, city.rates dfs
         probs=0 
-        distmethod=c('null') ## deprecated??
+        distmethod=0 ## deprecated??
         betaforce=0.5  ## seasonal forcing
         pop.pow=0 ## deprecated??
         importmethod=c(-1) 
@@ -27,7 +27,8 @@ mod.final <- within(mod.prep, {
     `England & Wales`$model.pars <- within(`England & Wales`$model.pars, {
         R0=24
         probs=0 
-        distmethod=c('null')
+        ## deprecated?
+        distmethod=0
         betaforce=0.5
         pop.pow=0 ## depre
         importmethod=c(-1)
