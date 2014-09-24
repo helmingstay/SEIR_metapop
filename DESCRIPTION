@@ -9,6 +9,7 @@ Description: More about what it does (maybe more than one line)
 License: GPL 3
 LazyLoad: yes
 Depends: R (>= 3.0.0), Rcpp (>= 0.10.0), RcppArmadillo (>= 0.2.7)
+Imports: xts, doMC, foreach, plyr, reshape2
 LinkingTo: Rcpp, RcppArmadillo
 RcppModules: seirmod
 SystemRequirements: GNU make

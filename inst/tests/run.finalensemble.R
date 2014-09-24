@@ -1,72 +1,74 @@
-source('mk.modrun.R');
-# in SOURCE.R
 #source('run.prepmod.R')
 ##
-registerDoMC(cores=4)
-
+## setup multicore
+library(doMC)
+registerDoMC()
+#registerDoMC(cores=4)
+##
 in.parallel <- T
 nreps <- 10
 
-## moved from run.finalensemble.R
-## see:
-##  prob1 = 0.01; prob2 = 0.90; (subset( resid.measure, value<quantile(value, prob1) &corr>quantile(corr, prob2) & where == 'US'))
-mod.final <- mod.prep
-mod.final$US$model <- data.frame( R0=18,  ## R0 must be present in demog, city.rates table
-                    probs=0, distmethod=c('null'),
-                    betaforce=0.5,
-                    pop.pow=0,
-                    imports=2e-8,
-                    ## schooltype 0 = sin, type 1 = term
-                    schooltype=c(0), importmethod=c(-1)
-)
+##  then modify mod.final as a copy of mod.prep
+## final simulation parameter specifications
+mod.final <- within(mod.prep, {
+    ## best parameter values
+    US$model.pars <- within(US$model.pars, {
+        R0=18  ## R0 must be present in demog, city.rates dfs
+        probs=0 
+        distmethod=c('null') ## deprecated??
+        betaforce=0.5  ## seasonal forcing
+        pop.pow=0 ## deprecated??
+        importmethod=c(-1) 
+        imports=2e-8 ## per day probability of E import??
+        ## schooltype 0 = sin, type 1 = term
+        schooltype=c(0)
+    })
+    `England & Wales`$model.pars <- within(`England & Wales`$model.pars, {
+        R0=24
+        probs=0 
+        distmethod=c('null')
+        betaforce=0.5
+        pop.pow=0 ## depre
+        importmethod=c(-1)
+        imports=5e-9
+        ## schooltype 0 = sin, type 1 = term
+        schooltype=c(1) 
+    })
+})
 
-## see:
-## prob1 = 0.01; prob2 = 0.7; (subset( resid.measure, value<quantile(value, prob1) &corr>quantile(corr, prob2) & where != 'US'))
-mod.final$`England & Wales`$model <- data.frame( R0=24,
-                    probs=0, distmethod=c('null'),
-                    betaforce=0.5,
-                    pop.pow=0,
-                    imports=5e-9,
-                    ## schooltype 0 = sin, type 1 = term
-                    schooltype=c(1), importmethod=c(-1)
-)
-
-##
 ##  Get list of vars from US, from run.prepmod.R
+## run simulations
 ensemble <- llply( mod.final, function(thislist) {
-    cat(sprintf("Running model with %s reps\n", nreps)) 
+    cat(sprintf("Running simulation with %s reps\n", nreps))
     thislist <- within(thislist, {
-        .R0 <- model$R0
-        newdemog <- subset(newdemog, R0==.R0)
-        alldist.df <- subset(alldist.df, R0==.R0)
+        .R0 <- model.pars$R0
+        demog <- subset(demog, R0==.R0)
         city.rates <- subset(city.rates, R0==.R0)
-        prev <- mk.prev(cases.obs, newdemog, zero.denom=Inf)
+        ## todo?? alldist / prev needed?
+        #alldist.df <- subset(alldist.df, R0==.R0)
+        #prev <- mk.prev(cases.obs, demog, zero.denom=Inf)
     })
     thislist$sims <- with(thislist, {
         ncity <- length(city.order)
-        newdemog$connect <- 1
-        ## still required by model, but not used
+        demog$connect <- 1
+        ## connection matrix not currently used, 
+        ## required by simulation
         dummy.mat = matrix( 1, nrow=ncity, ncol=ncity)
-        mk.modrun(model, index.limits, newdemog, 
-            city.rates, colnames(thislist$spec),
+        mk.modrun(model.pars, index.limits, demog, 
+            city.rates, cases.obs,
+            colnames(thislist$spec),
             .parallel= in.parallel, nreps=nreps, debug=F, 
             do.obs=T, do.spec=F, do.fpc=T, do.ratios=T
         )
     })
-    ## measure diff between model ensemble and data
-    #thislist$mod.diff <- mk.measure.mod(thislist)
-    
-    ## add the model results back to the list and return everything together
-    #for (ii in names(ret)) {
-        #thislist[[ii]] <- ret[[ii]]
-    #}
     thislist
 })
 
+## pull out estimated distributions
 ensemble.fpc <- ldply(ensemble, function(x) x$sims$fpc)
-ensemble.fpc <- colname.replace('.id',  'where', ensemble.fpc)
-ensemble.fpc <- wherefix(ensemble.fpc)
+ensemble.fpc <- rename(ensemble.fpc, c(.id='where'))
 
+## summarize model results for each country
 moddist.df <- ddply(ensemble.fpc,  'placename', function(x){
         ## assumes england and wales doesn't share placenames with us
         ## pull out one row, compute means, place into ret

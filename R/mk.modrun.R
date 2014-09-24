@@ -16,10 +16,13 @@
 #source('mk.ensemble.fit.R')
 
 
-mk.modrun = function(pardf, index.limits, newdemog, 
-                    city.rates, spec.names, obs_nstep=7,
+mk.modrun = function(parlist, index.limits, newdemog, 
+                    city.rates, cases.obs,
+                    spec.names, obs_nstep=7,
                     .parallel=F, debug=F, nreps=1,
-                    do.fpc=T, do.ratios=F, do.obs=F, do.spec=F){
+                    do.fpc=T, do.ratios=F, do.obs=F, 
+                    do.spec=F)
+{
     ## index constants
     i.Estep <- 1
     i.Eimport <- 2
@@ -56,59 +59,43 @@ mk.modrun = function(pardf, index.limits, newdemog,
         ##
         schooldays
     })
-
     ## schooltype: 
     ## 0 == sin, 1 == step (calculate beta low/hi from R0 & schoolyear)
-    #schooltype = 1 
+    #schooltype = 1
     #N0 = 1e6
+    ## connection matrix?
     #phi = 1e-4
     #diag(connectmat) = 1
-    ## these 2 lines should be the same...
-    #N0 = mk.pop(lcasedata$Measles$city.order, ldemog$city.dec, .year=1930, do.cum=F)
-    ##
-    ##
     ####
     ## invariant over all models, needed for initialization
-    ##
     ## pull out demographics only for these cities
     city.rates = subset(city.rates, placename %in% city.names)
     N0 <- subset(city.rates, year==run.limits[1])$pop
     ncity = length(N0)
     ##dummy geographic matrix
-    ## remove this from model code!!
+    ## remove geogmat from model code??
     geogmat = matrix(rnorm(ncity*2), ncol=2) 
-    with(pardf, if(R0<2) stop('Equilib calculated from R0, R0<2 not stable'))
+    with(parlist, if(R0<2) stop('Equilib calculated from R0, R0<2 not stable'))
     ## parameter list -- ok if there's extra stuff in it    
     ## params can change, one list per city
-    par.template = as.list(pardf)
-    within(par.template, {
-        ## hardcoded initial births to calc equilib S/E/I/R to start with
-        dS=0.02/365
-        ## for model initialization
-        dR = 0.0
-        ##
-        ## incubation
-        sigma = 1/8
-        ## infectious period
-        gamma = 1/5
-
-    }) -> par.template
-    ##
-    finret = list()
-    finret$params=par.template
-    finret$connectmat=connectmat
+    par.template <- parlist
+    ## return list
+    finret <- list()
+    ## copy model specs into return list
+    finret$params <- par.template
+    finret$connectmat <- connectmat
     ## dummy list
     ## pull out reporting rates for each city and add to 
     ## paramater list (one sublist for each city),
     ## starts the same for each city, 
     ## with the exception of pobs, which stays the same for the full sim
     ##
-    parlist = llply(1:ncity, function(x) {
-        ret = par.template; 
-        ret$pobs = newdemog$reprate[x]
+    city.parlist = llply(1:ncity, function(x) {
+        ret <- par.template; 
+        ret$pobs <- newdemog$reprate[x]
         ## adjust import rate by connection
         #ret$imports = with(newdemog[x,], connect/(ret$imports*pop)^ret$pop.pow)
-        schooldays = sum(schoolterms[[x]]==1)
+        schooldays <- sum(schoolterms[[x]]==1)
         ret$beta0 <- with( ret, 
             (R0*gamma)/(1+betaforce)^((2*schooldays-365)/365)
         )
@@ -121,7 +108,6 @@ mk.modrun = function(pardf, index.limits, newdemog,
         ## model is way too high for the below
         #ret$imports = with(newdemog[x,], (1)/sqrt(pop))  
         if( ret$imports <0 ) {print("Negative imports!"); browser()}
-        #if( ret$imports >1e-3 ) stop('imports very high!!')
         return(ret)
     })
     ##
@@ -129,10 +115,6 @@ mk.modrun = function(pardf, index.limits, newdemog,
     #cat(paste(rep('.', nreps), collapse=''))
     #cat('\n')
     llply(1:nreps, function(nrep) {
-        #if( progress != 'none') cat('.')
-        ##
-        # not needed -- do in loop??
-        # mymod$setpars(parlist)
         ##
         ## initial states as data.frame
         ## start at (approx) equilibrium -- same birth for everyone
@@ -145,14 +127,13 @@ mk.modrun = function(pardf, index.limits, newdemog,
         ## turn to matrix for SEIR
         initmat = t(as.matrix(initdf))
         nyears = diff(run.limits)+1
+        #browser()??
         mymod = newSEIRModel(initmat, nsteps=nyears*365, obs_nstep=obs_nstep )
         mymod$set_school(schoolterms)
         ## add metapop pars here
         mymod$set_metapop(list(dummy=1))
 
         ##
-        ## this is the order in helen's demog file...
-        #ii = order(subset(demog.cityrates.us, year==1910)$pop)
         #cat('stepping through years')
         ## for each year in the run.limits
         ## run the actual model
@@ -163,16 +144,16 @@ mk.modrun = function(pardf, index.limits, newdemog,
             ## update paramlist for this year
             ## get actual dS/dR values and set them
             ## get birthrate to set equilibrium?? 
-            mydemog = subset(city.rates, year==yy)
-            parlist = llply(1:ncity, function(ncity) {
-                    ret = parlist[[ncity]]
+            mydemog <- subset(city.rates, year==yy)
+            city.parlist <- llply(1:ncity, function(ncity) {
+                    ret <- city.parlist[[ncity]]
                     ## should move this outside the loop...
-                    ret$dS = mydemog[ncity,'dS']/365
-                    ret$dR = mydemog[ncity,'dR']/365
+                    ret$dS <- mydemog[ncity,'dS']/365
+                    ret$dR <- mydemog[ncity,'dR']/365
                     return(ret)
                     }
             )
-            mymod$set_pop(parlist)
+            mymod$set_pop(city.parlist)
             mymod$steps(365);
             #if(yy %%10 ==0 )browser()
         }
@@ -222,53 +203,13 @@ mk.modrun = function(pardf, index.limits, newdemog,
         })
         colnames(ratio.df) <- c('event', 'placename', 'value')
         ratio.df$event <- factor(ratio.df$event, levels = names(events))
-        
-        ## check to make sure nothing's negative and we've dont the math right
-        #if ( sum(rescue.mat< 0, na.rm=T) > 0 ) stop("Negative values in rescue mat (Eimport/(Estep-Eimport)), something's wrong")
-        
-        mk.xts <- function(mymat, .nstep=obs_nstep, .index.limits=index.limits, my.names=city.names) { 
-            ## convenience function
-            ## turn each matrix into a timeseries and then subset by the limits
-            ## model outputs weekly, as shown by nstep (number of days per step)
-            my.index <- as.Date( (0:(nrow(mymat)-1)*.nstep+1), origin=index.limits[1]);
-            ## trim to match data time window
-            ret <- xts(mymat, my.index)[index.limits,]
-            colnames(ret) <- my.names
-            ret
-        }
         ## full output matrix as xts
-        modrun.xts = mk.xts(Iobs.mat)
+        modrun.xts = mk.mat.to.xts(Iobs.mat)
         ## number of weeks after subsetting
         n.cut.weeks <- nrow(modrun.xts)
-        
-        ##
-        ## if debugging mode, plot shit
-        ## this is sloooooow
+        ## plot timeseries of cases & state transitions to pdfs
         if (!identical(debug.info, F)){
-            with(debug.info, {
-                which.cities=seq(from=1, to=81, by=4)
-                which.layout=c(3,7)
-                this.modname = sprintf('imports_%s,betaforce_%s,R0_%s', imports, betaforce,  R0)
-                pdf(file=sprintf('modfigs/xts-%s.pdf', this.modname), width=40, heigh=50 )
-                ## be careful, cases.obs is external
-                cat('\n\n\n#############################\nNaively using cases.obs to plot cases... are you sure this is the right object??\n\n')
-                print( xyplot(cases.obs[, which.cities], type=c('l','h','g'), scales=list(x=list(alternating=F)), layout=which.layout, main=this.modname, 
-                            xlab='Actual cases'), 
-                        split=c(1,1,1,5), more=T)
-                print( xyplot(modrun.xts[, which.cities], type=c('l','h','g'), scales=list(x=list(alternating=F)), layout=which.layout, 
-                            xlab='Model observed cases'), 
-                        split=c(1,2,1,5), more=T)
-                print( xyplot(xts(is.infinite(obsratio.xts), index(obsratio.xts))[, which.cities], type=c('l','h','g'), scales=list(x=list(alternating=F)), 
-                            xlab='Apparent extinctions', layout=which.layout), 
-                        split=c(1,3,1,5), more=T)
-                print( xyplot(xts(is.infinite(rescue.xts), index(rescue.xts))[, which.cities], type=c('l','h','g'), scales=list(x=list(alternating=F)), 
-                            xlab='Rescues', layout=which.layout), 
-                        split=c(1,4,1,5), more=T)
-                print( xyplot(xts(is.infinite(rescue.xts) & is.infinite(obsratio.xts), index(rescue.xts))[, which.cities], type=c('l','h','g'), 
-                            scales=list(x=list(alternating=F)), xlab='Apparent extinctions and rescues co-occur', layout=which.layout), 
-                        split=c(1,5,1,5), more=F)
-                dev.off()
-            })
+            mk.modrun.diag.plots(debug.info, cases.obs, modrun.xts)
         }
         return(list(ratio.df=ratio.df, cases.obs=modrun.xts))
     }, .parallel=.parallel) -> simlist 
