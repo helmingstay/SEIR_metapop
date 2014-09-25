@@ -7,7 +7,7 @@ registerDoMC()
 ## run simulation in parallel in inner loop?
 in.parallel <- F
 ## number of simulations
-nreps <- 10
+nreps <- 2
 
 ##  then modify mod.final as a copy of mod.prep
 ## final simulation parameter specifications
@@ -60,37 +60,35 @@ ensemble <- llply( mod.final, function(thislist) {
             city.rates, cases.obs,
             colnames(thislist$spec),
             .parallel= in.parallel, nreps=nreps, debug=F, 
-            do.obs=T, do.spec=F, do.fpc=T, do.ratios=T
+            do.obs=T, do.spec=F, do.dist=T, do.ratios=T
         )
     })
     thislist
 })
 
 ## pull out estimated distributions
-ensemble.fpc <- ldply(ensemble, function(x) x$sims$fpc)
-ensemble.fpc <- rename(ensemble.fpc, c(.id='where'))
+ensemble.dist <- ldply(ensemble, .id='where', function(x) x$sims$dist)
 
 ## summarize model results for each country
-moddist.df <- ddply(ensemble.fpc,  'placename', function(x){
+moddist.df <- ddply(ensemble.dist,  'placename', function(x){
         ## assumes england and wales doesn't share placenames with us
         ## pull out one row, compute means, place into ret
         ret <- x[1,]
-        myvars = c('mean','sd','CV','error') 
+        myvars = c('mean','sd','error') 
         ret[1, myvars] = colMeans( x[, myvars])
         ret
 })
-moddist.df$model <- 'Model'
-moddist.df$where <- sub('EW', 'England & Wales', moddist.df$where)
+moddist.df$model <- factor('Model')
+#moddist.df$where <- sub('EW', 'England & Wales', moddist.df$where)
 
-
+## writed out the results to an object for safekeeping
+save(ensemble, moddist.df, ensemble.dist, file='cache.ensemble.RData')
+## do more processing in run.combine.R
 
 ## compare??  use lm to 
-#ensemble.fit <- mk.ensemble.fit.all(ensemble.fpc, mod.prep) 
-#ensemble.xtable <- mk.ensemble.fit.all(ensemble.fpc, mod.prep, do.xtable=T) 
+#ensemble.fit <- mk.ensemble.fit.all(ensemble.dist, mod.prep) 
+#ensemble.xtable <- mk.ensemble.fit.all(ensemble.dist, mod.prep, do.xtable=T) 
 #ensemble.xtable <- colname.replace('where', 'Country', ensemble.xtable )
 #ensemble.xtable <- subset(ensemble.xtable, select=c(-R0, -betaforce,-imports))
 #print(xtable(ensemble.xtable, digits=3), include.rownames=F, file='figs/lmtable.tex')
 
-## writed out the results to an object for safekeeping
-save(ensemble, moddist.df, ensemble.fpc, file='cache.ensemble.RData')
-## do more processing in run.combine.R

@@ -9,6 +9,26 @@ mk.mat.to.xts <- function(mymat, nstep, index.limits, my.names) {
     ret
 }
 
+#' Error checking function
+#' Compare final population size between model and demog
+mk.modrun.check.popsize <- function(modpop, city.names, 
+    city.rates, run.limits, thresh=0.1
+) {
+    mod.popsize <-  data.frame(placename=city.names, modpop=as.vector(modpop))
+    data.popsize = subset(city.rates, year==run.limits[2], 
+            select=c(placename, pop))
+    fin.popsize = merge(data.popsize, mod.popsize) 
+    fin.popsize$diff = with(fin.popsize, pop-modpop)
+    fin.popsize$percent_diff = with(fin.popsize, diff/pop)
+    .over <- subset(fin.popsize, abs( percent_diff)  >thresh) 
+    if( nrow(.over) >0 ) { 
+        warning(
+            sprintf('Final model populations differ by more than %d%% from truth', thresh*100)
+        )
+        print(.over)
+        print(pardf)
+    }
+}
 
 #' if debugging mode, plot actual and modeled cases
 #' Use list debug.info to get relevant vars
@@ -43,4 +63,73 @@ mk.modrun.diag.plots <- function(debug.info, cases.obs, modrun.xts, .plotdir = '
         }
         dev.off()
     })
+}
+
+#' for each simulation, infer distribution 
+mk.modrun.dist <- function(simlist) {
+    ret <- ldply(simlist, .id='nrep', function(.rep) {
+            ## make the fpc from the model timeseries
+            cases.obs <- .rep[['cases.obs']]
+            ret <- mk.alldist(cases.obs)
+            ret
+    })
+    return(ret)
+}
+
+#' for each simulation, compute spectrum
+mk.modrun.spec <- function(simlist, spec.names) {
+    cases.list <- llply(simlist, function(.rep) {
+        ## pull out all the lists of timeseries
+        cases <- .rep[['cases.obs']]
+    })
+    ret <- mk.spec.model(cases.list, spec.names)
+    ret
+}
+
+#' deprecated??
+#' add all the columns in newdf that are missing to mydf with values from newdf, unless value is specified
+#' NOTE only the first row of newdf is used
+mk.addcols.df = function(mydf, newdf, value=F) {
+    oldnames = colnames(mydf)
+    newnames = colnames(newdf)
+    ## all the ones in new that are *not* in old
+    addnames = newnames[ !( newnames %in% oldnames) ]
+    ## if no value is given, use those in newdf
+    if (identical(value, FALSE)) {
+        for (ii in addnames) {
+                mydf[,ii] = newdf[1,ii]
+        }
+    } else {
+        for (ii in addnames) {
+                mydf[,ii] = value
+        }
+    }
+    mydf
+}
+
+
+
+#' deprecated??
+#' label numeric factors of fpc (see SEIR C++ model for final definition of numeric codes)
+mk.label.fpc <- function(myfpc) { 
+   within(myfpc, {
+        if( is.numeric( importmethod)){
+            importmethod <- factor(importmethod, levels=0:4, labels=c('No imports', 'Constant imports', 'Pulsed imports', 
+                                                            'Constant pop-proport imports', 'Pulsed pop-proport imports'))
+        }
+        if( is.numeric( schooltype)){
+            schooltype <- factor(schooltype, levels=0:1, labels=c('Sin forcing', 'Term forcing'))
+        }
+        if(is.numeric( betaforce)  ) {
+            betaforce <- factor(betaforce, levels= unique(betaforce), labels = sprintf("betaforce: %s", unique(betaforce)))
+        }
+        if(is.numeric( R0)  ) {
+            R0 <- factor(R0, levels= unique(R0), labels = sprintf("R0: %s", unique(R0)))
+        }
+        ## check to see if myhigh is in colnames first...
+        #if(is.numeric( myhigh)  & length(unique(myhigh)) ) {
+            #myhigh <- factor(myhigh, levels= unique(myhigh), labels = sprintf("high: %2.2e",   unique(myhigh)))
+        #}
+    }) -> myfpc
+    myfpc
 }

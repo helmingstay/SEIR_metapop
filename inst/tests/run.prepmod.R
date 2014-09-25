@@ -33,7 +33,9 @@ mod.prep = list()
 mod.template <- list(
     #myR0s = 10:25
     #myR0s = 20
-    myR0s = c(18,20),
+    ## this should include the final values for US, EW
+    ## otherwise specify per-list
+    myR0s = c(18,20,24),
     model.pars = list(
     ## hardcoded initial births to calc equilib S/E/I/R to start with
         dS=0.02/365,
