@@ -65,12 +65,14 @@ mk.modrun.diag.plots <- function(debug.info, cases.obs, modrun.xts, .plotdir = '
     })
 }
 
-#' for each simulation, infer distribution 
-mk.modrun.dist <- function(simlist) {
+#' for each simulation, 
+#' infer distribution of log case reports
+mk.modrun.distrib <- function(simlist) {
     ret <- ldply(simlist, .id='nrep', function(.rep) {
             ## make the fpc from the model timeseries
             cases.obs <- .rep[['cases.obs']]
-            ret <- mk.alldist(cases.obs)
+            ## fit distribution of log case reports
+            ret <- mk.all.distrib(cases.obs)
             ret
     })
     return(ret)
@@ -110,6 +112,8 @@ mk.addcols.df = function(mydf, newdf, value=F) {
 
 
 #' deprecated??
+#' keeping for reference
+#' different import methods, 
 #' label numeric factors of fpc (see SEIR C++ model for final definition of numeric codes)
 mk.label.fpc <- function(myfpc) { 
    within(myfpc, {

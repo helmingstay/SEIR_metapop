@@ -125,11 +125,11 @@ if(F) {
 ## deprecated?
 mod.prep <- llply(mod.prep, function(.list) within(.list,{
     ## get the dist for each R0
-    alldist.df <- ldply(myR0s, function(r0) {
-                mk.alldist(cases.obs, subset( demog, R0==r0))
+    distrib.df <- ldply(myR0s, function(r0) {
+                mk.all.distrib(cases.obs, subset( demog, R0==r0))
     })
-    alldist.df$where <- where
-    alldist.df$model <- factor('Data')
+    distrib.df$where <- where
+    distrib.df$model <- factor('Data')
     ## below is deprecated?
     ## make spectrum, biweekly   
     #spec <- mk.spec.mat(gren.cases[1:512,], freq.adjust=26)

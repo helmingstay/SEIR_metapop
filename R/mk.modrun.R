@@ -3,7 +3,7 @@ mk.modrun = function(parlist, index.limits, demog,
                     city.rates, cases.obs,
                     spec.names, obs_nstep=7,
                     .parallel=F, debug=F, nreps=1,
-                    do.dist=T, do.ratios=F, do.obs=F, 
+                    do.distrib=T, do.ratios=F, do.obs=F, 
                     do.spec=F, 
                     check.popsize=T, quiet=F)
 {
@@ -120,10 +120,8 @@ mk.modrun = function(parlist, index.limits, demog,
         if (!quiet) cat(sprintf('\n Sim #%d', nrep))
         ## for each year in the run.limits
         ## run the actual model
-        for (yy in seq(from=run.limits[1], to=run.limits[2], by=1)) {
-        ## !!fixme??
-        ## conflict on ocimum from head
-        ## for (yy in seq(from=run.limits[1], to=run.limits[2]-1, by=1)) {
+        ## to = limits-1??
+        for (yy in seq(from=run.limits[1], to=run.limits[2]-1, by=1)) {
             ## update paramlist for this year
             ## get actual dS/dR values and set them
             ## get birthrate to set equilibrium?? 
@@ -191,8 +189,8 @@ mk.modrun = function(parlist, index.limits, demog,
     names(simlist) <- 1:length(simlist)
 #, .progress='text')
     ## various reports, store results in return list
-    if(do.dist) {
-        finret$dist <- mk.modrun.dist(simlist)
+    if(do.distrib) {
+        finret$distrib <- mk.modrun.distrib(simlist)
     }
     if(do.spec) {
         finret$spec  <- mk.modrun.spec(simlist, spec.names)

@@ -1,12 +1,12 @@
-
-
-newModel <- function(initstates, transmat, accumvars, obsall, nobs, obs_nstep, deltat) {
-    ## model construction function
-    ## initstates:  states x population (integer) matrix of initial values of states
-    ## transmat:    states x events (integer) matrix of update coefficients mapping events to states
-    ## accumvar:    character vector naming events to accumulate
-    ## obsall:      bool, observe states as well as accumvars
-    ## nobs:        int, total number of observations
+#' general model construction function
+#' @param initstates  markov states x population (integer) matrix of initial values of states
+#' @param transmat    markov states x events (integer) matrix of update coefficients mapping events to states
+#' @param accumvars    character vector naming events to accumulate, e.g. sum over observation period
+#' @param obsall      bool, observe states as well as accumvars
+#' @param nsteps integer, number of simuation timesteps
+#' @param obs_nstep integer, observe every *this* steps
+#' @param deltat  numeric, not currently implemented.  see ?ts
+newModel <- function(initstates, transmat, accumvars, obsall, nsteps, obs_nstep, deltat) {
     ##
     ## errorchecking
     if ( !all( (initstates %% 1) == 0 )) stop("Only integer values allowed for initstates")
@@ -16,6 +16,7 @@ newModel <- function(initstates, transmat, accumvars, obsall, nobs, obs_nstep, d
     if ( !identical( rownames(initstates), rownames(transmat))) {
         stop("Rownames (states) of initstates and transmat must match")
     }
+    nobs <- 1+(nsteps/obs_nstep)
     ##
     ## these names are important
     poplist <- list(accum=accumvars, obsall = obsall, nobs=nobs, obs_nstep=obs_nstep, deltat=deltat)
@@ -24,13 +25,14 @@ newModel <- function(initstates, transmat, accumvars, obsall, nobs, obs_nstep, d
     return(model)
 }
 
-newSEIRModel <- function(initstates, nsteps=30*365, accumvars=c("latent","imports", "infect"), obsall=T, obs_nstep=7, deltat=1/365) {
-    ## model construction function
-    ## initstates:  states x population (integer) matrix of initial values of states
-    ## transmat:    states x events (integer) matrix of update coefficients mapping events to states
-    ## accumvar:    character vector naming events to accumulate
-    ## obsall:      bool, observe states as well as accumvars
-    ## nobs:        int, total number of observations
+#' model construction function, specific to SEIR model
+#' @param initstates  states x population (integer) matrix of initial values of states
+#' @param accumvars character vector naming events to accumulate (e.g. sum over observation time)
+#' @param obsall      bool, point-in-time observation of all states?
+#' @param nsteps integer, number of simuation timesteps
+#' @param obs_nstep integer, observe every *this* steps
+#' @param deltat  numeric, not currently implemented.  see ?ts
+newSEIRModel <- function(initstates, accumvars=c("latent","imports", "infect"), obsall=T, nsteps=30*365, obs_nstep=7, deltat=1/365) {
     ##
     nobs <- 1+(nsteps/obs_nstep)
     eventnames <- c("dS", "latent", "imports", "infect", "recover", "dR");
@@ -50,7 +52,7 @@ newSEIRModel <- function(initstates, nsteps=30*365, accumvars=c("latent","import
     transmat["R", "dR"] = 1
     transmat["N", "dS"] = 1
     transmat["N", "dR"] = 1
-    model <- newModel(initstates, transmat, accumvars, obsall, nobs, obs_nstep, deltat)
+    model <- newModel(initstates=initstates, transmat=transmat, accumvars=accumvars, obsall=obsall, nsteps=nsteps, obs_nstep=obs_nstep, deltat=deltat)
     return(model)
 }
 

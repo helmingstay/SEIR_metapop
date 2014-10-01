@@ -1,4 +1,3 @@
 ## xian todo list
 * Move code to generate data/ files from reprate repo to disease-source repo
 * Check code for !! and ?? tags
-* Deprecate mk.newfpc.R in favor of newer mk.dist.R?

@@ -8,19 +8,21 @@
 class Metapop { 
     public:
         Metapop(SEXP npop_, SEXP initstates_, SEXP transmat_, SEXP poplist_) : 
-           npop(as<unsigned int>(npop_)), istep(0), metapars(), ready_pop(false), ready_metapop(false)
+           npop(as<std::size_t>(npop_)), istep(0), metapars(), ready_pop(false), ready_metapop(false)
         {
+            std::size_t ii;
             // initialize a single population
             Pop tmppop( transmat_, poplist_);
             // then make a vector of them
             pops = std::vector<Pop>(npop, tmppop);
-            // check that nrow xymat == npop!!??
+            // should error-checking be here or in R??
+            // check: nrow xymat == npop??
+            // check: dimensions of initstates matches 
             //  
-            // Set states of each pop
-            // ?? check that dimensions of initstates matches 
-            // for initstates, states are rows, pops are cols
+            // Set initial states of each pop
+            // states are rows, pops are cols
             IntegerMatrix initstates(initstates_);
-            for (unsigned int ii=0; ii<npop; ii++) {
+            for (ii=0; ii<npop; ii++) {
                 // grab the column for this city
                 IntegerVector tmpvec = initstates( _, ii);
                 std::vector<unsigned int> tmpinit = as<std::vector<unsigned int> >(tmpvec);
@@ -28,24 +30,27 @@ class Metapop {
             };
         };
 
-        IntegerMatrix get_metapop_state(int n) { 
+        IntegerMatrix get_metapop_state(std::size_t n) { 
             // takes R-style 1-based index of state to retrieve
             // returns matrix of observed history of that state for each pop
             // cities as cols, rows as time
-            int nobs = pops[npop-1].iobs;
+            std::size_t ii;
+            std::size_t nobs = pops[npop-1].iobs;
             arma::umat  ret(nobs, npop);
-            for (unsigned int ii=0; ii<npop; ii++) {
+            for (ii=0; ii<npop; ii++) {
                 ret.col(ii) = pops[ii].getstate(n-1);
             };
             return wrap(ret);
         }   
 
+        // populate metapopulation parameter list, mark as ready
         void set_metapop( SEXP metapars_) {
             metapars.set(metapars_);
             ready_metapop = true;
         }
 
         void set_pop( SEXP pars_) {
+            std::size_t ii;
             // Takes a list of lists, each sublist contains that city's parlist
             // Loop through and set for each pop
             Rcpp::List tmppars(pars_);
@@ -53,7 +58,7 @@ class Metapop {
             if ( tmppars.size() != npop)  {
                 throw std::range_error(" the paramater list of lists should have npop elements");
             };
-            for ( unsigned int ii = 0; ii < npop; ii++) {
+            for ( ii = 0; ii < npop; ii++) {
                Rcpp::List thispars = tmppars(ii);
                pops[ii].pars.set( thispars ) ;
             } 
@@ -63,6 +68,7 @@ class Metapop {
 
 
         void set_school( SEXP tmp_) {
+            std::size_t ii;
             // Takes a list of vectors, each vector contains that city's school term
             // Loop through and set for each pop
             Rcpp::List tmp(tmp_);
@@ -70,20 +76,21 @@ class Metapop {
             if ( tmp.size() != npop)  {
                 throw std::range_error(" the schoo list should have npop elements");
             };
-            for ( unsigned int ii = 0; ii < npop; ii++) {
+            for ( ii = 0; ii < npop; ii++) {
                IntegerVector thisschool = tmp(ii);
                pops[ii].schoolterm =  thisschool  ;
             } 
             //END_RCPP
         }
 
-        void steps( int n ) {
+        void steps( std::size_t n ) {
+            std::size_t ii;
             if (!(ready_pop && ready_metapop)) {
                 throw std::runtime_error("Tried to run model before parameter initialization");
             }
             // advance the model forward n steps
             RNGScope scope; // when to call this??
-            for (int ii = 0; ii<n; ii++) {
+            for (ii = 0; ii<n; ii++) {
                 prestep();
                 step();
                 poststep();
@@ -91,33 +98,28 @@ class Metapop {
         }
 
     private:
-        int metaI, metaN ; // Metapop sums of I and N
+        std::size_t metaI, metaN ; // Metapop sums of I and N
         // does parlist need to change in-flight? 
         Parlist<double> metapars;
-        unsigned int npop;
+        std::size_t npop;
         std::vector<Pop> pops;
-        int istep; // index of current step, separate from iobs
+        std::size_t istep; // index of current step, separate from iobs
         bool ready_pop, ready_metapop;  // toogle this to true once pars have been set
 
         inline void prestep(){
-            // access matrices via metapars
-            // NumericMatrix xymat;  //distance matrix between cities
-            // NumericMatrix couplemat;  //metapop coupling matrix between cities
-            // FIXME!!
-            // functions that need to be completed outside of individual pops
+            std::size_t ii;
             // pre-intrapop step
+            // includes functions that need to be completed outside of individual pops
             //
-            // wrap this into a function??
-            // or remove dependence on Ieff -- can we grab statename from Events/SEIR?
-            // do processing of migration here,
-            // then take a step for each city
-            // first, get and save effective I for each pop
+            // compute total metapop population and incidence
+            // for migration
+            //reset
             metaI, metaN = 0;
-            for ( int ii = 0; ii < npop; ii++) {
+            for ( ii = 0; ii < npop; ii++) {
                    metaI +=  pops[ii].states("I");
                    metaN +=  pops[ii].states("N");
-                //reset
-                //pops[ithis].Ieff = 0;
+               // spatially-explicit migration would look something like this: 
+               //pops[ithis].Ieff = 0;
                //for ( iother = 0; iother < npop; iother++) {
                     // couplemat isn't symmetric -- step through this city's row
                    //pops[ithis].Ieff += couplemat(ithis, iother) * (pops[iother].I/pops[iother].N);
@@ -130,11 +132,12 @@ class Metapop {
         };
       
         inline void step( ) {
+            std::size_t ithis;
             //  intra-population functions
             // take the next step for each pop
-            for ( int ithis = 0; ithis < npop; ithis++) {
+            for ( ithis = 0; ithis < npop; ithis++) {
                pops[ithis].step(istep, metaI, metaN);
-            } 
+            }
             istep++;
         }
 };
@@ -157,7 +160,7 @@ RCPP_MODULE(seirmod){
                 obsall_     (bool, yes observes states and accum), \
                 nobs_       ( int, max number of observations), \
                 obs_nstep (number of steps per observation), \
-                deltat (timestep, implement!! ), \
+                deltat (timestep, implement?? ), \
             }" 
     )
     .method("get_metapop_state", &Metapop::get_metapop_state, "args: \

@@ -42,6 +42,7 @@ class Parlist {
         //}
 
         void set(SEXP newlist){
+            std::size_t ii;
             // initialize elements from a named input list (passed as SEXP) with values
             Rcpp::List tmplist(newlist);
             CharacterVector tmpnames = tmplist.attr("names") ;
@@ -49,26 +50,28 @@ class Parlist {
             // reinitialize list with zero-fill
             init_fromnames(tmpnames);
             // then fill with new values by name
-            for (int ii = 0; ii<N; ii++) {
+            for (ii = 0; ii<N; ii++) {
                tmpname = names[ii];
                 list[ tmpname ] = as<T>( tmplist[ tmpname ] );
             }
         }
 
         void set(Rcpp::List tmplist){
+            std::size_t ii;
             // initialize elements from a named input list (passed as SEXP) with values
             CharacterVector tmpnames = tmplist.attr("names") ;
             std::string tmpname;
             // reinitialize list with zero-fill
             init_fromnames(tmpnames);
             // then fill with new values by name
-            for (int ii = 0; ii<N; ii++) {
+            for (ii = 0; ii<N; ii++) {
                tmpname = names[ii];
                 list[ tmpname ] = as<T>( tmplist[ tmpname ] );
             }
         }
 
         void init_fromnames( CharacterVector names_list) {
+            std::size_t ii;
             // Generate zero-filled named list from vector of names
             names = Rcpp::as< STRINGVEC >(names_list);
             N = names_list.size();
@@ -76,7 +79,7 @@ class Parlist {
                 Rf_PrintValue(wrap(list));
                 throw std::range_error("Error in Parlist.set: newlist must have names");
             }
-            for( int ii = 0; ii<N; ii++){
+            for(ii = 0; ii<N; ii++){
               list[ names[ii] ] = static_cast<T>(0);
             }
         }
@@ -91,6 +94,7 @@ class Parlist {
         }
 
         void copy( const std::vector<T> &vals ) {
+            std::size_t ii;
             // copy vector of values into the list by position
             if (list.size() != vals.size()) {
                 Rf_PrintValue(wrap(list));
@@ -100,15 +104,16 @@ class Parlist {
             //std::copy(vals.begin(), vals.end(), list.begin());
             // map iterator doesn't seem to order by first fill...
             // fill by name instead
-            for (int ii = 0; ii < N; ii++) {
+            for (ii = 0; ii < N; ii++) {
                 list[ names[ii] ] = vals[ii];
             }
         }
 
         arma::Col<T> get_colvec() {
+            std::size_t ii;
             arma::Col<T> ret(N);
             // copy list values into the column for return
-            for (int ii = 0; ii < N; ii++) {
+            for (ii = 0; ii < N; ii++) {
                 ret[ii] = list[ names[ii] ];
             }
             return ret;
@@ -116,7 +121,7 @@ class Parlist {
 
     public:
         // variables
-        int N;
+        std::size_t N;
         STRINGVEC names;
         MAP list;
 

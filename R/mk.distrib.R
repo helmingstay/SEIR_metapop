@@ -55,7 +55,7 @@ mk.fitdist = function(params, x, y, norm=function(y) max(y), distrib=pnorm, par1
     ## compute distance between the distribution defined by x + params
     ## assumed to be mean and sd of pnorm and y
     ## e.g. compute pnorm(log10(prev), params) -  prop
-    ## pass only 1 factor-combination of the data frame in at a time!!
+    ## pass only 1 factor-combination of the data frame in at a time!
     ## metric:
     ## norm = sum : L1 
     ## norm = max : Linf 
@@ -80,7 +80,7 @@ mk.fitdist = function(params, x, y, norm=function(y) max(y), distrib=pnorm, par1
 #' ECDF of log incidence.  Default uses normal distribution 
 #' and KS (Linf norm).
 #' @return A data.frame with (log-space) mean, sd, and error for each location
-mk.dist <- function(mydf, norm=function(x) max(x)) {
+mk.distrib <- function(mydf, norm=function(x) max(x)) {
     ## take (previously modified w/zeros, add) dataframe
     ## of ECDF of percap incidence
     ## return sample mean/sd, inferred mean/sd, 
@@ -132,7 +132,7 @@ mk.dist <- function(mydf, norm=function(x) max(x)) {
 #' Wrapper function - ecdf, distribution
 #' Infer distribution of case reports 
 #' (which can then be scaled by reprate)
-mk.alldist <- function(.cases, 
+mk.all.distrib <- function(.cases, 
     .zero.as=1, .na.as=NA, norm=max
 ) {
     ## set zeros to 1
@@ -143,7 +143,7 @@ mk.alldist <- function(.cases,
     ## zero.rm=T, only affects (.add=0 && .denom=Inf)
     .ecdf <- mk.ecdf(.cases)
     ## Infer distribution from ECDF
-    .dist <- mk.dist(.ecdf, norm=norm)
+    .dist <- mk.distrib(.ecdf, norm=norm)
     ## we don't need sample mean/sd
     .dist <- droplevels(subset(.dist, which=='infer'))
     .dist <- dcast( .dist, ... ~ var, value.var='val')

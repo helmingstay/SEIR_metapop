@@ -18,8 +18,8 @@ class Pop {
                 Rcpp::List poplist(poplist_);
                 // should states and observations be reported, or just accum variables
                 obsall = as<bool>(poplist["obsall"]);
-                nobs = as<int>(poplist["nobs"]);
-                obs_nstep = as<int>(poplist["obs_nstep"]);
+                nobs = as<std::size_t>(poplist["nobs"]);
+                obs_nstep = as<std::size_t>(poplist["obs_nstep"]);
                 // !! check that all accum names are in events names
                 //
                 // pull out row and column names from transmat,
@@ -46,7 +46,7 @@ class Pop {
                 obsmat.zeros();
             }
         //Rcpp::List states, events, accum;
-        int iobs;  // index of current observation, public so metapop can get final dimensions
+        std::size_t iobs;  // index of current observation, public so metapop can get final dimensions
         arma::umat obsmat;      // the observation matrix - "final" output 
                                 // should be simple to implement grow-as-needed, 
                                 // just need a resize method taking int
@@ -56,9 +56,9 @@ class Pop {
         // transition as columns, state variables as rows
         IntegerMatrix transmat;
         bool obsall;
-        unsigned int nobsvars;       // number of obsvars == number of rows in obs matrix
-        unsigned int nobs;  // total number of observations, == ncol of output obs matrix
-        unsigned int obs_nstep;  // timesteps per observations
+        std::size_t nobsvars;       // number of obsvars == number of rows in obs matrix
+        std::size_t nobs;  // total number of observations, == ncol of output obs matrix
+        std::size_t obs_nstep;  // timesteps per observations
         // replace by .N and .names, respectively
         //unsigned int nstates, nevents, naccum, nobs;
         //std::vector< std::string>  state_vars, event_vars, accum_vars;
@@ -72,7 +72,7 @@ class Pop {
         // as unsigned, these will never be negative and therefore can wrap
         Parlist<unsigned int> states, events, accum; // should be unsigned??
 
-        void step(int istep, int metaI, int metaN) {
+        void step(std::size_t istep, std::size_t metaI, std::size_t metaN) {
            calcEvents(istep, metaI, metaN); 
            accumEvents(istep);
            updateStates(istep);
@@ -81,7 +81,7 @@ class Pop {
            }
         }
 
-        arma::ucolvec getstate(int whichstate) {
+        arma::ucolvec getstate(std::size_t whichstate) {
             // get the full history of the given obsvariable 
             // only return weeks that have been recoded
             arma::ucolvec tmp(arma::trans(obsmat.row(whichstate)));
@@ -89,26 +89,28 @@ class Pop {
             return tmp;
         }
 
-        void accumEvents(int istep) {
+        void accumEvents(std::size_t istep) {
+            std::size_t ii;
             // use the names of accum list to accumulate events for each timestep
             // accum is zeroed on observation
-            for (int ii = 0; ii < accum.N; ii++) {
+            for (ii = 0; ii < accum.N; ii++) {
                 std::string myname = accum.names[ii];
                 // e.g. latents, import, infect
                 accum.add( myname, events(myname));
             }
         }
 
-        void updateStates(int istep) {
+        void updateStates(std::size_t istep) {
             // loop through every event and state, 
             // add events to state according to coefficient
             // 
             // index vars
-            int ievent, istate;
+            std::size_t ievent, istate;
             // coefficient telling state delta resulting from events
-            int coef;
+            std::size_t coef;
             // names for list access
             std::string event_name, state_name; 
+            // debugging 
             //Rf_PrintValue(wrap(istep));
             //Rf_PrintValue(wrap("before"));
             //Rf_PrintValue(wrap(states.get_colvec().t()));
@@ -132,8 +134,10 @@ class Pop {
             //Rf_PrintValue(wrap(events.get_colvec().t()));
         }
 
-        void observe(int istep) {
-            // ret should be reference to obsmat??
+        void observe(std::size_t istep) {
+            // write accumulated states to persistent matrix
+            // and point-in-time states
+            // reset accumulated sums 
             arma::ucolvec ret( nobsvars );
             if ( iobs +1 > nobs) {
                 // this should never happen, right?
@@ -168,16 +172,16 @@ class Pop {
 
         // these should go in model!!
         #include <algorithm>
-        int myrpois( double rate, int mymax) {
+        std::size_t myrpois( double rate, std::size_t mymax) {
             // rpois that returns an int no larger than second arg
-            int result = Rf_rpois( rate );
+            std::size_t result = Rf_rpois( rate );
             return std::min(result, mymax);
         }
             
 
         // begin model definition
         // also see prestep in Metapop
-        void calcEvents(int istep, int metaI, int metaN) {
+        void calcEvents(std::size_t istep, std::size_t metaI, std::size_t metaN) {
             // this is the *only* user-modifiable function
             // in combination with the transition matrix, this is the model
             // should be a private function that takes pars, states, and istep
@@ -205,7 +209,7 @@ class Pop {
             if (pars("schooltype")== 1) {
                 //termtime forcing, school scedule passed in as vector of 1/-1
                 // add 365 to ensure doy is always positive
-                int doy = (istep+1) % 365;
+                std::size_t doy = (istep+1) % 365;
                 beta_now = pars("beta0")*pow(1.0+pars("betaforce"), schoolterm( doy ));
             };
             //
@@ -216,7 +220,7 @@ class Pop {
             // everyone gets the same internal dynamics
             latent_rate = (beta_now*states("S")*states("I"))/states("N"); 
             // manual imports, multiply by S at the end
-            switch ( static_cast<int>(pars("importmethod"))) {
+            switch ( static_cast<std::size_t>(pars("importmethod"))) {
                 //metapop
                 case -1:
                     import_rate = (pars("imports")*(beta_now*(metaI-states("I"))))/(metaN * pow(states("N"), pars("pop.pow")));

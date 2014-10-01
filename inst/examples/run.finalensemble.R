@@ -1,12 +1,15 @@
-#source('run.prepmod.R')
+source(
+    system.file('examples', 'run.prepmod.R', package='SEIR')
+)
 ##
 ## setup multicore
 library(doMC)
 registerDoMC()
+## uncomment to use more than 1 cores
 #registerDoMC(cores=4)
 ## run simulation in parallel in inner loop?
 in.parallel <- F
-## number of simulations
+## number of simulations, should be >1
 nreps <- 2
 
 ##  then modify mod.final as a copy of mod.prep
@@ -46,9 +49,6 @@ ensemble <- llply( mod.final, function(thislist) {
         .R0 <- model.pars$R0
         demog <- subset(demog, R0==.R0)
         city.rates <- subset(city.rates, R0==.R0)
-        ## todo?? alldist / prev needed?
-        #alldist.df <- subset(alldist.df, R0==.R0)
-        #prev <- mk.prev(cases.obs, demog, zero.denom=Inf)
     })
     thislist$sims <- with(thislist, {
         ncity <- length(city.order)
@@ -60,17 +60,17 @@ ensemble <- llply( mod.final, function(thislist) {
             city.rates, cases.obs,
             colnames(thislist$spec),
             .parallel= in.parallel, nreps=nreps, debug=F, 
-            do.obs=T, do.spec=F, do.dist=T, do.ratios=T
+            do.obs=T, do.spec=F, do.distrib=T, do.ratios=T
         )
     })
     thislist
 })
 
 ## pull out estimated distributions
-ensemble.dist <- ldply(ensemble, .id='where', function(x) x$sims$dist)
+ensemble.distrib <- ldply(ensemble, .id='where', function(x) x$sims$distrib)
 
-## summarize model results for each country
-moddist.df <- ddply(ensemble.dist,  'placename', function(x){
+## summarize simulation results for each country
+mod.distrib.df <- ddply(ensemble.distrib,  'placename', function(x){
         ## assumes england and wales doesn't share placenames with us
         ## pull out one row, compute means, place into ret
         ret <- x[1,]
@@ -78,11 +78,10 @@ moddist.df <- ddply(ensemble.dist,  'placename', function(x){
         ret[1, myvars] = colMeans( x[, myvars])
         ret
 })
-moddist.df$model <- factor('Model')
-#moddist.df$where <- sub('EW', 'England & Wales', moddist.df$where)
+mod.distrib.df$model <- factor('Model')
 
 ## writed out the results to an object for safekeeping
-save(ensemble, moddist.df, ensemble.dist, file='cache.ensemble.RData')
+#save(ensemble, moddist.df, ensemble.distrib, file='cache.ensemble.RData')
 ## do more processing in run.combine.R
 
 ## compare??  use lm to 

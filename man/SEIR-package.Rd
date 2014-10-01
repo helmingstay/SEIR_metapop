@@ -3,36 +3,31 @@
 \alias{SEIR}
 \docType{package}
 \title{
-What the package does (short line)
-~~ package title ~~
+Epidemiological metapopulation markov model simulator
 }
 \description{
-More about what it does (maybe more than one line)
-~~ A concise (1-5 lines) description of the package ~~
+Simulate markov model using Guillespie tau leap method,
+particularly SEIR epidemiological compartment model
 }
 \details{
 \tabular{ll}{
 Package: \tab SEIR\cr
 Type: \tab Package\cr
 Version: \tab 1.0\cr
-Date: \tab 2010-10-05\cr
-License: \tab What license is it under?\cr
+Date: \tab 2014-09-30\cr
+License: GPL-3
 LazyLoad: \tab yes\cr
 }
-~~ An overview of how to use the package, including the most important ~~
-~~ functions ~~
+See mk.modrun and newSEIRModel for basic functionality.
 }
 \author{
-Who wrote it
+Christian Gunning
 
-Maintainer: Who to complain to <yourfault@somewhere.net>
-~~ The author and/or maintainer of the package ~~
+Maintainer: Christian Gunning <yourfault@somewhere.net>
 }
 \references{
-~~ Literature or other references for background information ~~
+\url{http://www.ncbi.nlm.nih.gov/pubmed/23782847}
 }
-~~ Optionally other standard keywords, one per line, from file KEYWORDS in ~~
-~~ the R documentation directory ~~
 \keyword{ package }
 \seealso{
 ~~ Optional links to other man pages, e.g. ~~
